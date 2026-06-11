@@ -1,4 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
+import ReactDOM from "react-dom/client";
+import { Page1, Page2, Page3, Page4 } from "./PDFTemplate.jsx";
+import { exportToPDF } from "./generatePDF.js";
 import {
   LineChart, Line, BarChart, Bar, ComposedChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -583,12 +586,56 @@ const TABLE_ROWS=[
 ];
 
 // ── main PC component ──────────────────────────────────────────────
-export default function PCSim() {
+export default function PCSim({ customer, onSave, onBack }) {
   const[inputTab,setInputTab]=useState("main");
   const[viewMode,setViewMode]=useState("chart");
-  const[p,setP]=useState(INIT);
+  const[p,setP]=useState(()=>customer?.params||INIT);
+  const[saved,setSaved]=useState(false);
+  const[pdfLoading,setPdfLoading]=useState(false);
   const set=k=>v=>setP(prev=>({...prev,[k]:v}));
   const sim=useMemo(()=>runSim(p),[p]);
+
+  // ── PDF生成 ──────────────────────────────────────────────────────
+  const handlePDF = useCallback(async () => {
+    if(pdfLoading) return;
+    setPdfLoading(true);
+    const date = new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric"});
+    const customerName = customer?.name || "お客様";
+    const pageData = { customerName, date, p, sim };
+
+    // 一時コンテナを body に追加
+    const container = document.createElement("div");
+    container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;";
+    document.body.appendChild(container);
+
+    // 3ページ分の要素を生成してレンダリング
+    const pageEls = [];
+    const pageComponents = [
+      <Page1 key={1} {...pageData}/>,
+      <Page2 key={2} {...pageData}/>,
+      <Page3 key={3} {...pageData}/>,
+      <Page4 key={4} {...pageData}/>,
+    ];
+
+    for(const comp of pageComponents) {
+      const el = document.createElement("div");
+      container.appendChild(el);
+      const root = ReactDOM.createRoot(el);
+      root.render(comp);
+      pageEls.push(el);
+    }
+
+    // レンダリング完了を待つ
+    await new Promise(r => setTimeout(r, 600));
+
+    try {
+      const filename = `${customerName}_シミュレーション_${date.replace(/[年月日]/g,"")}.pdf`;
+      await exportToPDF(pageEls, filename);
+    } finally {
+      document.body.removeChild(container);
+      setPdfLoading(false);
+    }
+  }, [customer, p, sim, pdfLoading]);
   const{rows}=sim;
   const totalInvest=p.buildCost+p.landCost+p.otherCost;
   const areaInfo=AREA_DATA[p.city]||{rent1K:7,rent1LDK:9,vacancy:8,landChgYoy:1};
@@ -1000,13 +1047,34 @@ export default function PCSim() {
       {/* top bar */}
       <div style={{background:C.navy,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",height:48,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
+          {onBack&&(
+            <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:600,cursor:"pointer"}}>
+              ← 一覧
+            </button>
+          )}
           <div style={{width:4,height:24,background:"#2E75B6",borderRadius:2}}/>
-          <span style={{fontSize:14,fontWeight:700,color:"#fff"}}>アパート一棟建て 収支シミュレーター</span>
-          <span style={{fontSize:10,color:"#93C5FD"}}>概算・参考値</span>
+          <div>
+            <span style={{fontSize:14,fontWeight:700,color:"#fff"}}>{customer?.name||"新規シミュレーション"}</span>
+            <span style={{fontSize:10,color:"#93C5FD",marginLeft:8}}>アパート一棟建て 収支シミュレーター｜概算・参考値</span>
+          </div>
         </div>
-        <div style={{display:"flex",gap:6}}>
-          <button style={{padding:"5px 12px",background:"#22C55E",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>💾 保存</button>
-          <button style={{padding:"5px 12px",background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>📄 PDF</button>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {saved&&<span style={{fontSize:10,color:"#86EFAC"}}>✓ 保存済み</span>}
+          <button
+            onClick={()=>{
+              if(customer&&onSave){
+                onSave(customer.id, p, {grossY:sim.grossY,noiY:sim.noiY,irr:sim.irr,ccr:sim.ccr,dscr:sim.dscr,ltv:sim.ltv,netBurden:sim.netBurden});
+                setSaved(true);
+                setTimeout(()=>setSaved(false),2500);
+              }
+            }}
+            style={{padding:"5px 12px",background:"#22C55E",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}
+          >💾 保存</button>
+          <button
+            onClick={handlePDF}
+            disabled={pdfLoading}
+            style={{padding:"5px 12px",background:pdfLoading?"#475569":"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:pdfLoading?"not-allowed":"pointer",transition:"background 0.15s"}}
+          >{pdfLoading?"⏳ 生成中...":"📄 PDF出力"}</button>
         </div>
       </div>
       {/* KPI */}
