@@ -614,7 +614,6 @@ export default function PCSim({ customer, onSave, onBack }) {
       <Page1 key={1} {...pageData}/>,
       <Page2 key={2} {...pageData}/>,
       <Page3 key={3} {...pageData}/>,
-      <Page4 key={4} {...pageData}/>,
     ];
 
     for(const comp of pageComponents) {
