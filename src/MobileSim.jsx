@@ -452,8 +452,8 @@ function SpKpiTile({label,value,ok,term}) {
 }
 
 // ── main mobile component ──────────────────────────────────────────
-export default function MobileSim() {
-  const [p, setP] = useState(INIT);
+export default function MobileSim({ customer, onSave, onBack }) {
+  const [p, setP] = useState(()=>customer?.params||INIT);
   const [modalOpen, setModalOpen] = useState(false);
   const [optOpen, setOptOpen] = useState(false);
   const set = k => v => setP(prev=>({...prev,[k]:v}));
@@ -624,6 +624,16 @@ function InfoIcon({ term }) {
           <div style={{fontSize:11,color:C.gray,textAlign:"center",marginBottom:4}}>合計 {sim.totalUnits}戸 / 満室年収 {fmtM(sim.blendedRent*sim.totalUnits*12)}</div>
 
           <MSec icon="🏗" title="建物・土地"/>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:6}}>建物構造</div>
+            <div style={{display:"flex",gap:5,background:C.light,padding:4,borderRadius:8}}>
+              {Object.entries(STRUCTURES).map(([k,v])=>(
+                <button key={k} onClick={()=>set("structure")(k)} style={{flex:1,padding:"8px 4px",fontSize:12,fontWeight:600,borderRadius:6,border:"none",cursor:"pointer",background:p.structure===k?C.navy:"transparent",color:p.structure===k?"#fff":C.gray,lineHeight:1.3}}>
+                  {v.label}<br/><span style={{fontSize:9,opacity:.7}}>{v.life}年</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={{marginBottom:10}}>
             <div style={{fontSize:12,fontWeight:600,color:C.slate,marginBottom:6}}>土地の所有</div>
             <div style={{display:"flex",gap:6,background:C.light,padding:4,borderRadius:8}}>
@@ -660,12 +670,6 @@ function InfoIcon({ term }) {
               <span style={{fontSize:10,color:C.blue,transform:optOpen?"rotate(180deg)":"none",transition:"0.2s"}}>▼</span>
             </button>
             {optOpen&&(<>
-              <SL label="建物構造" min={0} max={0} step={1} value={0} onChange={()=>{}} unit=""/>
-              <div style={{display:"flex",gap:5,marginBottom:14}}>
-                {Object.entries(STRUCTURES).map(([k,v])=>(
-                  <button key={k} onClick={()=>set("structure")(k)} style={{flex:1,padding:"7px 4px",fontSize:11,fontWeight:600,borderRadius:6,border:"none",cursor:"pointer",background:p.structure===k?C.navy:C.light,color:p.structure===k?"#fff":C.gray,lineHeight:1.3}}>{v.label}<br/><span style={{fontSize:9,opacity:.7}}>{v.life}年</span></button>
-                ))}
-              </div>
               <SL label="諸費用" min={0} max={3000} step={50} value={p.otherCost} onChange={set("otherCost")} unit="万円" hint="登記・不動産取得税・司法書士・印紙税など。建築費の3〜5%が目安。"/>
               <SL label="安定期入居率" min={60} max={100} step={1} value={p.occ} onChange={set("occ")} unit="%"/>
               <SL label="初年度入居率" min={50} max={100} step={1} value={p.occInit} onChange={set("occInit")} unit="%"/>
@@ -722,8 +726,19 @@ function InfoIcon({ term }) {
     <div style={{display:"flex",flexDirection:"column",height:"100vh",maxWidth:430,margin:"0 auto",fontFamily:"'Noto Sans JP','Hiragino Sans',sans-serif",fontSize:13,color:C.slate,background:C.light,position:"relative"}}>
       {/* header */}
       <div style={{background:C.navy,padding:"12px 16px",flexShrink:0}}>
-        <div style={{fontSize:15,fontWeight:700,color:"#fff"}}>🏢 収支シミュレーター</div>
-        <div style={{fontSize:10,color:"#93C5FD",marginTop:1}}>{p.pref} {p.city} / {sim.totalUnits}戸 / 保有{p.holdYrs}年　概算・参考値</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {onBack&&(
+              <button onClick={onBack} style={{background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:6,padding:"3px 8px",fontSize:11,cursor:"pointer"}}>← 一覧</button>
+            )}
+            <div style={{fontSize:15,fontWeight:700,color:"#fff"}}>{customer?.name||"新規シミュレーション"}</div>
+          </div>
+          <button
+            onClick={()=>{ if(customer&&onSave) onSave(customer.id, p, {grossY:sim.grossY,noiY:sim.noiY,irr:sim.irr,ccr:sim.ccr,dscr:sim.dscr,ltv:sim.ltv,netBurden:sim.netBurden}); }}
+            style={{background:"#22C55E",color:"#fff",border:"none",borderRadius:6,padding:"5px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}
+          >💾 保存</button>
+        </div>
+        <div style={{fontSize:10,color:"#93C5FD"}}>{p.pref} {p.city} / {sim.totalUnits}戸 / 保有{p.holdYrs}年　概算・参考値</div>
       </div>
 
       {/* scrollable result */}

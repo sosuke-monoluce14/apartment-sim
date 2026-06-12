@@ -356,7 +356,9 @@ function runSim(p) {
       noi:R(noi),interest:R(interest),principal:R(principal),annPay:R(annPay),bal:R(bal),
       cfAD:R(cfAD),cum:R(cum),buildBook:R(buildBook),landVal:R(landVal),
       assetTotal:R(buildBook+landVal),incVal:R(incVal),nw:R(incVal-bal),
-      depr:R(deprAnnual),taxSaving:R(taxSaving)});
+      depr:R(deprAnnual),taxSaving:R(taxSaving),
+      remDeprYrs:Math.max(0,life-yr),
+      remDeprAmt:Math.max(0,p.buildCost*(life-yr)/life)});
   }
   const yr1=rows[0]||{}, last=rows[p.holdYrs-1]||rows[rows.length-1]||{};
   const exitPrice=last.incVal||0;
@@ -577,6 +579,10 @@ const TABLE_ROWS=[
   {type:"single",label:"累計CF",key:"cum",bold:true,signed:true},
   {type:"group",label:"税務"},
   {type:"single",label:"節税額（所得税＋住民税）",term:"損益通算",key:"taxSaving",color:C.green},
+  {type:"group",label:"減価償却スケジュール"},
+  {type:"single",label:"年間減価償却費",term:"減価償却",key:"depr",color:"#2563EB"},
+  {type:"single",label:"残償却金額",key:"remDeprAmt",color:"#7C3AED"},
+  {type:"single",label:"残償却期間（年）",key:"remDeprYrs",color:"#6B7280"},
   {type:"group",label:"資産価値"},
   {type:"parent",label:"帳簿価値合計",term:"原価法",key:"assetTotal",color:C.slate},
   {type:"child",label:"建物帳簿価値",key:"buildBook",color:C.gray},
@@ -839,7 +845,153 @@ export default function PCSim({ customer, onSave, onBack }) {
     </Acc>
   </div>);
 
-  const INPUT_PANEL={main:<InputMain/>,rooms:<InputRooms/>,finance:<InputFinance/>,revenue:<InputRevenue/>,cost:<InputCost/>,exit:<InputExit/>};
+  const InputLoanSim = () => {
+    const [ls, setLs] = useState({
+      annIncome: 800,
+      maxRepayRatio: 35,
+      existingMonthly: 0,
+      loanYears: 30,
+      loanRate: 1.8,
+      propPrice: p.buildCost + (p.hasLand?0:p.landCost),
+    });
+    const setL = k => v => setLs(prev=>({...prev,[k]:v}));
+    const maxAnnualDS = ls.annIncome * ls.maxRepayRatio / 100;
+    const maxMonthlyDS = maxAnnualDS / 12 - ls.existingMonthly;
+    const mRate = ls.loanRate / 100 / 12;
+    const nMon = ls.loanYears * 12;
+    const maxLoan = maxMonthlyDS > 0 && mRate > 0
+      ? (maxMonthlyDS * 10000 * (1 - Math.pow(1+mRate,-nMon)) / mRate) / 10000
+      : (maxMonthlyDS > 0 ? maxMonthlyDS * nMon : 0);
+    const totalPrice = ls.propPrice;
+    const minEquity = Math.max(0, totalPrice - maxLoan);
+    return (
+      <div>
+        <div style={{fontSize:11,color:C.gray,background:"#EFF6FF",borderRadius:8,padding:"8px 10px",marginBottom:12,lineHeight:1.6}}>
+          💡 年収・返済負担率から借入可能額を試算します。金融機関の審査基準は異なる場合があります。
+        </div>
+        <FL>年収</FL>
+        <Slider min={300} max={5000} step={50} value={ls.annIncome} onChange={setL("annIncome")} display={`${ls.annIncome}万円`}/>
+        <FL>返済負担率（上限）</FL>
+        <Slider min={25} max={50} step={1} value={ls.maxRepayRatio} onChange={setL("maxRepayRatio")} display={`${ls.maxRepayRatio}%`} hint="金融機関の一般的な基準は35〜40%。安全に運用するなら35%以下推奨"/>
+        <FL>既存ローン返済額（月額）</FL>
+        <Slider min={0} max={50} step={0.5} value={ls.existingMonthly} onChange={setL("existingMonthly")} display={`${ls.existingMonthly}万円/月`} hint="住宅ローン・カーローン等の既存返済額"/>
+        <FL>借入期間</FL>
+        <Slider min={10} max={35} step={1} value={ls.loanYears} onChange={setL("loanYears")} display={`${ls.loanYears}年`}/>
+        <FL>想定金利</FL>
+        <Slider min={0.5} max={5} step={0.1} value={ls.loanRate} onChange={setL("loanRate")} display={`${ls.loanRate}%`}/>
+        <FL>物件取得価格（参照）</FL>
+        <Slider min={1000} max={50000} step={100} value={ls.propPrice} onChange={setL("propPrice")} display={`${ls.propPrice.toLocaleString()}万円`}/>
+        <div style={{background:C.navy,borderRadius:10,padding:"14px 16px",marginTop:10}}>
+          <div style={{fontSize:10,color:"#93C5FD",marginBottom:10,letterSpacing:"0.05em"}}>試算結果</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+            <div style={{background:"rgba(255,255,255,0.1)",borderRadius:8,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#93C5FD",marginBottom:4}}>借入可能額（概算）</div>
+              <div style={{fontSize:20,fontWeight:700,color:maxLoan>0?"#86EFAC":"#FCA5A5"}}>{maxLoan>0?`${Math.round(maxLoan).toLocaleString()}万円`:"試算不可"}</div>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.1)",borderRadius:8,padding:"10px 12px"}}>
+              <div style={{fontSize:9,color:"#93C5FD",marginBottom:4}}>月次返済上限</div>
+              <div style={{fontSize:20,fontWeight:700,color:"#FDE68A"}}>{maxMonthlyDS>0?`${maxMonthlyDS.toFixed(1)}万円/月`:"—"}</div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div style={{background:"rgba(255,255,255,0.08)",borderRadius:8,padding:"8px 12px"}}>
+              <div style={{fontSize:9,color:"#93C5FD",marginBottom:3}}>年間返済上限</div>
+              <div style={{fontSize:14,fontWeight:600,color:"#fff"}}>{maxAnnualDS.toFixed(0)}万円/年</div>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.08)",borderRadius:8,padding:"8px 12px"}}>
+              <div style={{fontSize:9,color:"#93C5FD",marginBottom:3}}>必要自己資金（目安）</div>
+              <div style={{fontSize:14,fontWeight:600,color:minEquity>0?"#FCA5A5":"#86EFAC"}}>{minEquity>0?`${Math.round(minEquity).toLocaleString()}万円以上`:"自己資金不要"}</div>
+            </div>
+          </div>
+          <div style={{marginTop:10,fontSize:9,color:"#64748B",lineHeight:1.6}}>
+            ※ 返済負担率 = 年間返済額 ÷ 年収。既存ローンがある場合は合算で計算されます。金融機関の実際の審査はこれより保守的な場合があります。
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const InputPurchaseDetail = () => {
+    const propPrice = p.buildCost + (p.hasLand?0:p.landCost);
+    const landPrice = p.hasLand ? 0 : p.landCost;
+    const buildPrice = p.buildCost;
+    const brokerFee = propPrice > 0 ? Math.round((propPrice * 0.03 + 6) * 1.1) : 0;
+    const regTaxOwnership = Math.round(landPrice * 0.015 + buildPrice * 0.002);
+    const regTaxMortgage = Math.round(sim.loan * 0.001);
+    const regTaxTotal = regTaxOwnership + regTaxMortgage;
+    const acqTaxLand = Math.round(landPrice * 0.7 * 0.03);
+    const acqTaxBuild = Math.round(buildPrice * 0.7 * 0.03);
+    const acqTaxTotal = acqTaxLand + Math.max(0, acqTaxBuild - 36);
+    const stampTax = propPrice < 5000 ? 2 : propPrice < 10000 ? 5 : propPrice < 50000 ? 10 : 20;
+    const scrivenerFee = Math.round(propPrice * 0.003 + 5);
+    const loanFee = Math.round(sim.loan * 0.022);
+    const insuranceInit = p.structure === 'rc' ? 30 : p.structure === 'steel' ? 20 : 15;
+    const totalMisc = brokerFee + regTaxTotal + acqTaxTotal + stampTax + scrivenerFee + loanFee + insuranceInit;
+    const grandTotal = propPrice + totalMisc;
+    const Row = ({label, val, sub, bold, highlight}) => (
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:highlight?"#F1F5F9":"transparent",borderBottom:`1px solid ${C.border}`}}>
+        <div>
+          <div style={{fontSize:11,fontWeight:bold?600:400,color:bold?C.navy:C.slate}}>{label}</div>
+          {sub&&<div style={{fontSize:9.5,color:C.gray}}>{sub}</div>}
+        </div>
+        <div style={{fontSize:12,fontWeight:bold?700:400,color:bold?C.navy:C.slate,whiteSpace:"nowrap"}}>{Math.round(val).toLocaleString()}万円</div>
+      </div>
+    );
+    const Group = ({title}) => (
+      <div style={{background:"#F1F5F9",padding:"5px 10px",borderBottom:`1px solid ${C.border}`,fontSize:10,fontWeight:700,color:C.gray,letterSpacing:"0.05em"}}>{title}</div>
+    );
+    return (
+      <div>
+        <div style={{fontSize:11,color:C.gray,background:"#EFF6FF",borderRadius:8,padding:"8px 10px",marginBottom:12,lineHeight:1.6}}>
+          💡 物件取得に必要な総費用の内訳です。諸費用は概算値です。
+        </div>
+        <Group title="物件取得費"/>
+        {!p.hasLand&&<Row label="土地取得費" val={landPrice} highlight/>}
+        <Row label="建築費" val={buildPrice}/>
+        <Row label="物件取得費 小計" val={propPrice} bold/>
+        <Group title="取得時諸費用"/>
+        <Row label="仲介手数料" val={brokerFee} sub={`(取得価格×3%+6万)×消費税`} highlight/>
+        <Row label="登録免許税" val={regTaxTotal} sub={`所有権移転 ${regTaxOwnership}万 + 抵当権設定 ${regTaxMortgage}万`}/>
+        <Row label="不動産取得税" val={acqTaxTotal} sub="固定資産税評価額×3%（新築軽減控除後）" highlight/>
+        <Row label="印紙税" val={stampTax} sub="売買・工事請負契約書"/>
+        <Row label="司法書士・調査士報酬" val={scrivenerFee} sub="登記手続き・測量費（概算）" highlight/>
+        <Row label="ローン事務手数料" val={loanFee} sub="借入額×2.2%（金融機関により異なる）"/>
+        <Row label="火災・地震保険（初年度）" val={insuranceInit} sub={`${STRUCTURES[p.structure]?.label||"木造"}基準の概算`} highlight/>
+        <Row label="諸費用 小計" val={totalMisc} bold/>
+        <div style={{background:C.navy,borderRadius:8,padding:"12px 14px",marginTop:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:10,color:"#93C5FD",marginBottom:4}}>取得総額（物件＋諸費用）</div>
+              <div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{grandTotal.toLocaleString()}万円</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:10,color:"#93C5FD",marginBottom:4}}>諸費用率</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#FDE68A"}}>{propPrice>0?(totalMisc/propPrice*100).toFixed(1):0}%</div>
+            </div>
+          </div>
+          <div style={{marginTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div style={{background:"rgba(255,255,255,0.08)",borderRadius:6,padding:"7px 10px"}}>
+              <div style={{fontSize:9,color:"#93C5FD"}}>自己資金との差</div>
+              <div style={{fontSize:13,fontWeight:600,color:p.equity>=totalMisc?"#86EFAC":"#FCA5A5"}}>
+                {p.equity>=totalMisc?"余裕あり":"不足"} {Math.abs(p.equity-totalMisc).toLocaleString()}万円
+              </div>
+            </div>
+            <div style={{background:"rgba(255,255,255,0.08)",borderRadius:6,padding:"7px 10px"}}>
+              <div style={{fontSize:9,color:"#93C5FD"}}>入力の「諸費用」との差</div>
+              <div style={{fontSize:13,fontWeight:600,color:Math.abs(p.otherCost-totalMisc)<200?"#86EFAC":"#FCA5A5"}}>
+                {p.otherCost>=totalMisc?"余裕あり":"乖離"} {Math.abs(p.otherCost-totalMisc).toLocaleString()}万円
+              </div>
+            </div>
+          </div>
+          <div style={{marginTop:8,fontSize:9,color:"#64748B",lineHeight:1.6}}>
+            ※ 各費用は概算値です。実際の費用は物件・金融機関・税務状況により異なります。税理士・司法書士へご確認ください。
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const INPUT_PANEL={main:<InputMain/>,rooms:<InputRooms/>,finance:<InputFinance/>,revenue:<InputRevenue/>,cost:<InputCost/>,exit:<InputExit/>,loan:<InputLoanSim/>,purchase:<InputPurchaseDetail/>};
 
   // ── CHART VIEW ─────────────────────────────────────────────────
   const ChartView=()=>(
@@ -1085,7 +1237,7 @@ export default function PCSim({ customer, onSave, onBack }) {
         {/* LEFT */}
         <div style={{width:296,flexShrink:0,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`,background:"#fff",overflow:"hidden"}}>
           <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,background:"#F8FAFC",flexShrink:0,overflowX:"auto"}}>
-            {[{k:"main",l:"土地・建物"},{k:"rooms",l:"間取り"},{k:"finance",l:"資金"},{k:"revenue",l:"収益"},{k:"cost",l:"コスト"},{k:"exit",l:"出口・税務"}].map(t=>(
+            {[{k:"main",l:"土地・建物"},{k:"rooms",l:"間取り"},{k:"finance",l:"資金"},{k:"revenue",l:"収益"},{k:"cost",l:"コスト"},{k:"exit",l:"出口・税務"},{k:"loan",l:"💰 融資試算"},{k:"purchase",l:"🧾 購入明細"}].map(t=>(
               <TabBtn key={t.k} active={inputTab===t.k} onClick={()=>setInputTab(t.k)}>{t.l}</TabBtn>
             ))}
           </div>
