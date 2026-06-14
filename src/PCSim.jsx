@@ -1415,10 +1415,24 @@ export default function PCSim({ customer, onSave, onBack }) {
       {/* split */}
       <div style={{flex:1,display:"flex",overflow:"hidden"}}>
         {/* LEFT */}
-        <div style={{width:296,flexShrink:0,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`,background:"#fff",overflow:"hidden"}}>
-          <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,background:"#F8FAFC",flexShrink:0,overflowX:"auto"}}>
-            {[{k:"main",l:"土地・建物"},{k:"rooms",l:"間取り"},{k:"finance",l:"資金"},{k:"revenue",l:"収益"},{k:"cost",l:"コスト"},{k:"exit",l:"出口・税務"},{k:"loan",l:"💰 融資試算"},{k:"purchase",l:"🧾 購入明細"},{k:"asset",l:"📐 償却ロジック"}].map(t=>(
+        <div style={{width:320,flexShrink:0,display:"flex",flexDirection:"column",borderRight:`1px solid ${C.border}`,background:"#fff",overflow:"hidden"}}>
+          {/* Row 1: 物件入力タブ */}
+          <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,background:"#F8FAFC",flexShrink:0}}>
+            {[{k:"main",l:"土地・建物"},{k:"rooms",l:"間取り"},{k:"finance",l:"資金"},{k:"revenue",l:"収益"},{k:"cost",l:"コスト"},{k:"exit",l:"出口・税務"}].map(t=>(
               <TabBtn key={t.k} active={inputTab===t.k} onClick={()=>setInputTab(t.k)}>{t.l}</TabBtn>
+            ))}
+          </div>
+          {/* Row 2: ツールタブ */}
+          <div style={{display:"flex",alignItems:"center",background:"#EEF2F8",borderBottom:`1px solid ${C.border}`,flexShrink:0,padding:"3px 6px",gap:4}}>
+            <span style={{fontSize:9,color:C.gray,whiteSpace:"nowrap",paddingRight:2}}>🔧</span>
+            {[{k:"loan",l:"💰 融資試算"},{k:"purchase",l:"🧾 購入明細"},{k:"asset",l:"📐 償却ロジック"}].map(t=>(
+              <button key={t.k} onClick={()=>setInputTab(t.k)} style={{
+                padding:"3px 9px",fontSize:11,fontWeight:600,borderRadius:5,border:"none",
+                cursor:"pointer",whiteSpace:"nowrap",lineHeight:1.4,
+                background:inputTab===t.k?C.navy:"#fff",
+                color:inputTab===t.k?"#fff":C.navy,
+                boxShadow:inputTab===t.k?"none":"0 1px 2px rgba(0,0,0,.12)",
+              }}>{t.l}</button>
             ))}
           </div>
           <div style={{flex:1,overflowY:"auto",padding:"14px 14px 20px"}}>{INPUT_PANEL[inputTab]}</div>
