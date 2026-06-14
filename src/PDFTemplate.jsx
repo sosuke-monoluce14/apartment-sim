@@ -529,3 +529,109 @@ export function Page3({ customerName, date, p, sim }) {
 
 // 後方互換エクスポート（PCSim.jsx から Page4 も import している場合に備えて）
 export const Page4 = Page3
+
+// ─── 不動産購入資金明細 PDF ────────────────────────────────────────
+export function PurchasePDFPage({ pd, landBuildYen }) {
+  const miscNum  = (pd.miscItems  || []).filter(i => !i.isJitsu).reduce((s, i) => s + (i.amount || 0), 0)
+  const bankNum  = (pd.bankItems  || []).filter(i => !i.isJitsu).reduce((s, i) => s + (i.amount || 0), 0)
+  const otherNum = (pd.otherItems || []).filter(i => !i.isJitsu).reduce((s, i) => s + (i.amount || 0), 0)
+  const grandTotal = landBuildYen + miscNum + bankNum + otherNum
+
+  const fmt = v => (v || 0).toLocaleString()
+
+  const baseTd = {borderBottom:"1px solid #D8DEE8", verticalAlign:"middle"}
+
+  const SectionHd = ({ label }) => (
+    <tr>
+      <td colSpan={3} style={{...baseTd, background:"#EEF2F7", padding:"6px 14px", fontSize:11.5, fontWeight:700, color:"#1B3F6B", borderBottom:"1px solid #C5CDD8"}}>
+        {label}
+      </td>
+    </tr>
+  )
+
+  const ItemRow = ({ label, amount, note, isJitsu, isConsumeTax }) => (
+    <tr>
+      <td style={{...baseTd, padding:"7px 14px 7px 24px", fontSize:12, color:"#2D3748", width:"38%"}}>{label}</td>
+      <td style={{...baseTd, padding:"7px 14px", fontSize:12, textAlign:"right", color:"#1A2535", width:"25%"}}>
+        {isConsumeTax ? <span style={{fontSize:11, color:"#555"}}>{note}</span>
+          : isJitsu   ? <span style={{fontSize:11, color:"#666"}}>実費</span>
+          : fmt(amount)}
+      </td>
+      <td style={{...baseTd, padding:"7px 14px", fontSize:11, color:"#64748B", width:"37%"}}>
+        {isConsumeTax ? "" : note}
+      </td>
+    </tr>
+  )
+
+  const SubtotalRow = ({ amount, note }) => (
+    <tr style={{background:"#F5F7FA"}}>
+      <td style={{...baseTd, padding:"6px 14px 6px 24px", fontWeight:700, fontSize:12, color:"#1B3F6B"}} colSpan={1}>小計</td>
+      <td style={{...baseTd, padding:"6px 14px", fontWeight:700, fontSize:12, textAlign:"right", color:"#1B3F6B"}}>{fmt(amount)}</td>
+      <td style={{...baseTd, padding:"6px 14px", fontSize:11, color:"#64748B"}}>{note || "（概算）"}</td>
+    </tr>
+  )
+
+  return (
+    <div style={{width:W, minHeight:H, background:"#fff", fontFamily:FF, color:"#1A2535", padding:"52px 60px 48px", boxSizing:"border-box"}}>
+
+      {/* タイトル */}
+      <h1 style={{textAlign:"center", fontSize:22, fontWeight:700, color:T.navy, marginBottom:28, letterSpacing:"0.12em", borderBottom:`3px solid ${T.gold}`, paddingBottom:14}}>
+        不動産購入資金明細
+      </h1>
+
+      {/* 物件名・日付 */}
+      <div style={{display:"flex", justifyContent:"space-between", marginBottom:20, alignItems:"baseline"}}>
+        <div style={{fontSize:14, fontWeight:700, color:T.navy}}>【{pd.propertyName || "　　　　　　　　　　"}】</div>
+        <div style={{fontSize:12, color:T.sub}}>{pd.date || ""}</div>
+      </div>
+
+      {/* テーブル */}
+      <table style={{width:"100%", borderCollapse:"collapse", border:"1px solid #C5CDD8", fontSize:12}}>
+        <thead>
+          <tr style={{background:T.navy}}>
+            <th style={{padding:"9px 14px", color:"#fff", fontSize:12, textAlign:"left", fontWeight:600}}>項目</th>
+            <th style={{padding:"9px 14px", color:"#fff", fontSize:12, textAlign:"right", fontWeight:600}}>金額（円）</th>
+            <th style={{padding:"9px 14px", color:"#fff", fontSize:12, textAlign:"left", fontWeight:600}}>備考</th>
+          </tr>
+        </thead>
+        <tbody>
+          {/* 購入費内訳 */}
+          <SectionHd label="購入費内訳" />
+          <ItemRow label="土地建物購入費" amount={landBuildYen} note="" isJitsu={false} isConsumeTax={false}/>
+          <ItemRow label="消費税" amount={0} note={pd.taxNote || "本体工事費に含む"} isJitsu={false} isConsumeTax={true}/>
+          <SubtotalRow amount={landBuildYen} note=""/>
+
+          {/* 諸費用内訳 */}
+          <SectionHd label="諸費用内訳" />
+          {(pd.miscItems || []).map((i,idx) => <ItemRow key={i.id||idx} label={i.label} amount={i.amount} note={i.note} isJitsu={i.isJitsu}/>)}
+          <SubtotalRow amount={miscNum}/>
+
+          {/* 銀行費用内訳 */}
+          <SectionHd label="銀行費用内訳" />
+          {(pd.bankItems || []).map((i,idx) => <ItemRow key={i.id||idx} label={i.label} amount={i.amount} note={i.note} isJitsu={i.isJitsu}/>)}
+          <SubtotalRow amount={bankNum}/>
+
+          {/* その他 */}
+          {(pd.otherItems || []).length > 0 && <>
+            <SectionHd label="その他" />
+            {(pd.otherItems || []).map((i,idx) => <ItemRow key={i.id||idx} label={i.label} amount={i.amount} note={i.note} isJitsu={i.isJitsu}/>)}
+          </>}
+
+          {/* 合計 */}
+          <tr style={{background:T.navy}}>
+            <td style={{padding:"13px 14px", color:"#fff", fontWeight:700, fontSize:15, letterSpacing:"0.2em"}}>合　計</td>
+            <td style={{padding:"13px 14px", color:"#FFD700", fontWeight:700, fontSize:15, textAlign:"right"}}>{fmt(grandTotal)}</td>
+            <td style={{padding:"13px 14px", color:"#93C5FD", fontSize:11}}>（概算）</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* 会社情報 */}
+      <div style={{marginTop:36, textAlign:"right", fontSize:12, lineHeight:2, color:T.sub}}>
+        <div style={{fontWeight:700, color:T.navy}}>{pd.company || ""}</div>
+        <div>{pd.address || ""}</div>
+        {pd.tel && <div>ＴＥＬ　{pd.tel}</div>}
+      </div>
+    </div>
+  )
+}

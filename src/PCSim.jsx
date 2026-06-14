@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useCallback } from "react";
 import ReactDOM from "react-dom/client";
-import { Page1, Page2, Page3, Page4 } from "./PDFTemplate.jsx";
+import { Page1, Page2, Page3, Page4, PurchasePDFPage } from "./PDFTemplate.jsx";
 import { exportToPDF } from "./generatePDF.js";
 import {
   LineChart, Line, BarChart, Bar, ComposedChart, Area,
@@ -412,6 +412,32 @@ const BANKS = [
   { id:'custom',      name:'カスタム入力',            rate:1.8,   reviewRate:3.5,  ratioTiers:[{max:9999,r:35}] },
 ];
 
+const DEFAULT_PD = {
+  propertyName:"",
+  date:"",
+  taxNote:"本体工事費に含む",
+  miscItems:[
+    {id:"broker",  label:"仲介手数料",     amount:0,      note:"",                                       isJitsu:false},
+    {id:"stamp",   label:"契約書印紙代",   amount:30000,  note:"",                                       isJitsu:false},
+    {id:"regOwn",  label:"所有権移転費用", amount:350000, note:"登録免許税+司法書士手数料（概算）",      isJitsu:false},
+    {id:"regPres", label:"表題・保存登記", amount:150000, note:"（概算）",                               isJitsu:false},
+    {id:"option",  label:"オプション工事費",amount:0,     note:"",                                       isJitsu:true},
+  ],
+  bankItems:[
+    {id:"bankStamp",label:"金消契約書印紙代",amount:60200,   note:"金融機関により異なります。（電子契約の場合不要）",isJitsu:false},
+    {id:"bankFee",  label:"銀行事務手数料", amount:55000,   note:"金融機関により異なります。",             isJitsu:false},
+    {id:"loanFee",  label:"ローン手数料",   amount:0,       note:"保証料内枠の場合は金利＋0.2％となります。",isJitsu:false},
+    {id:"mtgSet",   label:"抵当権設定料",   amount:350000,  note:"（概算）",                               isJitsu:false},
+    {id:"fire",     label:"火災保険料",     amount:300000,  note:"付保額・支払方法によります。（概算）",    isJitsu:false},
+  ],
+  otherItems:[
+    {id:"propTax", label:"固定資産税負担金",amount:0, note:"日割計算となります。", isJitsu:true},
+  ],
+  company:"ワイケイホーム株式会社",
+  address:"朝霞市西原２－１５－２７",
+  tel:"０４８－４８６－１２２２",
+};
+
 const INIT={
   pref:"東京都",city:"世田谷区",
   rooms:[{madori:"1K",count:8,rent:7.5},{madori:"1LDK",count:4,rent:10.0}],
@@ -421,6 +447,7 @@ const INIT={
   mgmtRate:5,repairRes:50,propTax:80,insure:5,util:12,
   majorRepairs:[{yr:15,cost:600}],structure:"wood",landChg:0.5,
   holdYrs:20,exitYield:5.5,exitBrok:3,salary:800,comparables:[],
+  purchaseDetail:{...DEFAULT_PD},
 };
 
 // ── primitives ─────────────────────────────────────────────────────
@@ -1002,111 +1029,175 @@ export default function PCSim({ customer, onSave, onBack }) {
   };
 
   const InputPurchaseDetail = () => {
-    const propPrice = p.buildCost + (p.hasLand?0:p.landCost);
-    const landPrice = p.hasLand ? 0 : p.landCost;
-    const buildPrice = p.buildCost;
-    // 自動計算値（仮数値）
-    const calcBroker    = propPrice > 0 ? Math.round((propPrice * 0.03 + 6) * 1.1) : 0;
-    const calcRegOwn    = Math.round(landPrice * 0.015 + buildPrice * 0.002);
-    const calcRegMtg    = Math.round(sim.loan * 0.001);
-    const calcAcqTax    = Math.round(landPrice * 0.7 * 0.03) + Math.max(0, Math.round(buildPrice * 0.7 * 0.03) - 36);
-    const calcStamp     = propPrice < 5000 ? 2 : propPrice < 10000 ? 5 : propPrice < 50000 ? 10 : 20;
-    const calcScrivener = Math.round(propPrice * 0.003 + 5);
-    const calcLoanFee   = Math.round(sim.loan * 0.022);
-    const calcInsurance = p.structure === 'rc' ? 30 : p.structure === 'steel' ? 20 : 15;
-    const CALC = {broker:calcBroker,regOwn:calcRegOwn,regMtg:calcRegMtg,acqTax:calcAcqTax,stamp:calcStamp,scrivener:calcScrivener,loanFee:calcLoanFee,insurance:calcInsurance,propTaxAdj:0,other:0};
-    const [vals, setVals] = useState(CALC);
-    const setV = k => e => setVals(prev=>({...prev,[k]:+e.target.value||0}));
-    const resetOne = k => setVals(prev=>({...prev,[k]:CALC[k]}));
-    const resetAll = () => setVals(CALC);
-    const changed = Object.keys(CALC).some(k=>vals[k]!==CALC[k]);
-    const regTotal  = vals.regOwn + vals.regMtg;
-    const totalMisc = vals.broker + regTotal + vals.acqTax + vals.stamp + vals.scrivener + vals.loanFee + vals.insurance + vals.propTaxAdj + vals.other;
-    const grandTotal = propPrice + totalMisc;
+    const pd = p.purchaseDetail || DEFAULT_PD;
+    const updatePD = patch => set("purchaseDetail")({...pd, ...patch});
+    const landBuildYen = (p.buildCost + (p.hasLand ? 0 : p.landCost)) * 10000;
+    const loanFeeAuto  = Math.round(sim.loan * 10000 * 0.022);
 
-    const Group = ({title}) => (
-      <div style={{background:"#F1F5F9",padding:"5px 10px",borderBottom:`1px solid ${C.border}`,fontSize:10,fontWeight:700,color:C.gray,letterSpacing:"0.05em"}}>{title}</div>
-    );
-    const StatRow = ({label, val, bold}) => (
-      <div style={{display:"flex",justifyContent:"space-between",padding:"5px 10px",borderBottom:`1px solid ${C.border}`,background:bold?"#EEF2FF":"transparent"}}>
-        <span style={{fontSize:10.5,fontWeight:bold?700:400,color:bold?C.navy:C.slate}}>{label}</span>
-        <span style={{fontSize:11,fontWeight:bold?700:400,color:bold?C.navy:C.slate}}>{Math.round(val).toLocaleString()}万円</span>
+    // アイテム操作ヘルパー
+    const updateItem = (listKey, id, patch) =>
+      updatePD({[listKey]: pd[listKey].map(i => i.id === id ? {...i, ...patch} : i)});
+    const addItem = listKey => {
+      const newId = `custom_${Date.now()}`;
+      updatePD({[listKey]: [...pd[listKey], {id:newId, label:"", amount:0, note:"", isJitsu:false}]});
+    };
+    const removeItem = (listKey, id) =>
+      updatePD({[listKey]: pd[listKey].filter(i => i.id !== id)});
+
+    // 小計
+    const miscNum  = pd.miscItems .filter(i=>!i.isJitsu).reduce((s,i)=>s+(i.amount||0),0);
+    const bankNum  = pd.bankItems .filter(i=>!i.isJitsu).reduce((s,i)=>s+(i.amount||0),0);
+    const otherNum = pd.otherItems.filter(i=>!i.isJitsu).reduce((s,i)=>s+(i.amount||0),0);
+    const grandTotal = landBuildYen + miscNum + bankNum + otherNum;
+    const fmt = v => (v||0).toLocaleString();
+
+    // PDF出力
+    const [pdLoading, setPdLoading] = useState(false);
+    const handlePurchasePDF = async () => {
+      if(pdLoading) return;
+      setPdLoading(true);
+      const container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;z-index:-1;pointer-events:none;";
+      document.body.appendChild(container);
+      const el = document.createElement("div");
+      container.appendChild(el);
+      const root = ReactDOM.createRoot(el);
+      root.render(<PurchasePDFPage pd={pd} landBuildYen={landBuildYen}/>);
+      await new Promise(r => setTimeout(r, 600));
+      try {
+        const name = pd.propertyName || "物件";
+        const d = new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric"});
+        await exportToPDF([el], `${name}_購入資金明細_${d.replace(/[年月日]/g,"")}.pdf`);
+      } finally {
+        document.body.removeChild(container);
+        setPdLoading(false);
+      }
+    };
+
+    // UI部品
+    const SectionBar = ({label, listKey}) => (
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#EEF2F7",padding:"5px 10px",borderBottom:`1px solid ${C.border}`,borderTop:`1px solid ${C.border}`,marginTop:10}}>
+        <span style={{fontSize:10.5,fontWeight:700,color:C.navy,letterSpacing:"0.04em"}}>{label}</span>
+        <button onClick={()=>addItem(listKey)} style={{fontSize:10,color:C.blue,background:"#EFF6FF",border:`1px solid ${C.blue}`,borderRadius:5,padding:"2px 8px",cursor:"pointer"}}>＋ 項目追加</button>
       </div>
     );
-    const ERow = ({label, valKey, sub, highlight}) => {
-      const isDiff = vals[valKey] !== CALC[valKey];
+    const SubtotalBar = ({amount}) => (
+      <div style={{display:"flex",justifyContent:"space-between",padding:"5px 10px",background:"#F5F7FA",borderBottom:`1px solid ${C.border}`,borderTop:`1px solid ${C.border}`}}>
+        <span style={{fontSize:10.5,fontWeight:700,color:C.navy}}>小計</span>
+        <span style={{fontSize:11,fontWeight:700,color:C.navy}}>{fmt(amount)} 円</span>
+      </div>
+    );
+
+    const ItemRowEdit = ({listKey, item, hint}) => {
+      const isCustom = item.id.startsWith("custom_");
       return (
-        <div style={{padding:"5px 10px",background:highlight?"#F8FAFC":"transparent",borderBottom:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:6}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:10.5,color:C.slate,display:"flex",alignItems:"center",gap:4}}>
-                {label}
-                {isDiff&&<span style={{fontSize:8,background:"#FEF3C7",color:"#92400E",borderRadius:3,padding:"1px 4px"}}>変更済</span>}
-              </div>
-              {sub&&<div style={{fontSize:8.5,color:C.gray}}>{sub}</div>}
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:3,flexShrink:0}}>
-              <input type="number" step="1" min="0" value={vals[valKey]} onChange={setV(valKey)}
-                style={{width:72,padding:"3px 5px",border:`1.5px solid ${isDiff?C.blue:C.border}`,borderRadius:5,fontSize:12,fontWeight:600,color:C.navy,textAlign:"right"}}/>
-              <span style={{fontSize:10,color:C.gray}}>万円</span>
-              {isDiff&&<button onClick={()=>resetOne(valKey)} title={`自動値: ${CALC[valKey]}万円`}
-                style={{fontSize:9,color:C.blue,background:"none",border:"none",cursor:"pointer",padding:"1px 2px"}}>↩</button>}
-            </div>
+        <div style={{borderBottom:`1px solid ${C.border}`,padding:"7px 10px",background:"#fff"}}>
+          {/* ラベル行 */}
+          <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:4}}>
+            {isCustom
+              ? <input value={item.label} onChange={e=>updateItem(listKey,item.id,{label:e.target.value})}
+                  placeholder="項目名を入力" style={{flex:1,fontSize:11,padding:"2px 6px",border:`1px solid ${C.border}`,borderRadius:4,color:C.navy}}/>
+              : <span style={{flex:1,fontSize:11,fontWeight:600,color:C.slate}}>{item.label}</span>
+            }
+            <label style={{display:"flex",alignItems:"center",gap:3,fontSize:10,color:C.gray,whiteSpace:"nowrap",cursor:"pointer"}}>
+              <input type="checkbox" checked={item.isJitsu} onChange={e=>updateItem(listKey,item.id,{isJitsu:e.target.checked})} style={{accentColor:C.blue}}/>
+              実費
+            </label>
+            {isCustom && <button onClick={()=>removeItem(listKey,item.id)} style={{fontSize:10,color:"#DC2626",background:"none",border:"none",cursor:"pointer",padding:"0 2px",lineHeight:1}}>✕</button>}
           </div>
+          {/* 金額・備考 */}
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            {item.isJitsu
+              ? <span style={{flex:"0 0 130px",fontSize:11,color:C.gray,padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius:4,background:"#F8FAFC",textAlign:"right"}}>実費</span>
+              : <input type="number" step="1" min="0" value={item.amount||0}
+                  onChange={e=>updateItem(listKey,item.id,{amount:parseInt(e.target.value)||0})}
+                  style={{flex:"0 0 130px",fontSize:12,fontWeight:600,color:C.navy,padding:"3px 6px",border:`1.5px solid ${C.border}`,borderRadius:4,textAlign:"right"}}/>
+            }
+            <span style={{fontSize:10,color:C.gray,whiteSpace:"nowrap"}}>円</span>
+            <input value={item.note||""} onChange={e=>updateItem(listKey,item.id,{note:e.target.value})}
+              placeholder="備考" style={{flex:1,fontSize:10,padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius:4,color:C.slate}}/>
+          </div>
+          {hint&&<div style={{fontSize:9,color:C.blue,marginTop:3}}>💡 {hint}</div>}
         </div>
       );
     };
 
     return (
       <div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <div style={{fontSize:10.5,color:C.gray,lineHeight:1.5}}>💡 自動計算の仮数値が入力されています。実際の値に修正してください。</div>
-          {changed&&<button onClick={resetAll} style={{fontSize:10,color:C.blue,background:"#EFF6FF",border:`1px solid ${C.blue}`,borderRadius:6,padding:"3px 8px",cursor:"pointer",whiteSpace:"nowrap",marginLeft:8}}>全リセット</button>}
+        {/* ヘッダー：物件名・日付・PDF出力 */}
+        <div style={{background:"#F8FAFC",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:10}}>
+          <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+            <span style={{fontSize:10.5,fontWeight:600,color:C.slate,whiteSpace:"nowrap"}}>物件名</span>
+            <input value={pd.propertyName||""} onChange={e=>updatePD({propertyName:e.target.value})}
+              placeholder="例：南浦和分譲 A号棟" style={{flex:1,fontSize:11,padding:"4px 8px",border:`1px solid ${C.border}`,borderRadius:5,color:C.navy}}/>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:8}}>
+            <span style={{fontSize:10.5,fontWeight:600,color:C.slate,whiteSpace:"nowrap"}}>日付</span>
+            <input value={pd.date||""} onChange={e=>updatePD({date:e.target.value})}
+              placeholder="例：令和8年4月17日" style={{flex:1,fontSize:11,padding:"4px 8px",border:`1px solid ${C.border}`,borderRadius:5,color:C.navy}}/>
+          </div>
+          <button onClick={handlePurchasePDF} disabled={pdLoading} style={{width:"100%",padding:"7px",background:pdLoading?"#475569":C.navy,color:"#fff",border:"none",borderRadius:6,fontSize:12,fontWeight:700,cursor:pdLoading?"not-allowed":"pointer"}}>
+            {pdLoading?"⏳ 生成中...":"🖨 PDF出力（購入資金明細）"}
+          </button>
         </div>
-        <Group title="物件取得費（参照）"/>
-        {!p.hasLand&&<StatRow label="土地取得費" val={landPrice}/>}
-        <StatRow label="建築費" val={buildPrice}/>
-        <StatRow label="物件取得費 小計" val={propPrice} bold/>
-        <Group title="取得時諸費用（編集可）"/>
-        <ERow label="仲介手数料" valKey="broker" sub={`自動: (取得価格×3%+6万)×1.1 = ${calcBroker}万円`} highlight/>
-        <ERow label="所有権移転 登録免許税" valKey="regOwn" sub={`自動: 土地×1.5%+建物×0.2% = ${calcRegOwn}万円`}/>
-        <ERow label="抵当権設定 登録免許税" valKey="regMtg" sub={`自動: 借入額×0.1% = ${calcRegMtg}万円`} highlight/>
-        <ERow label="不動産取得税" valKey="acqTax" sub={`自動: 評価額×3%(新築軽減後) = ${calcAcqTax}万円`}/>
-        <ERow label="印紙税（売買・請負）" valKey="stamp" sub={`自動: 取得価格帯定額 = ${calcStamp}万円`} highlight/>
-        <ERow label="司法書士・土地家屋調査士" valKey="scrivener" sub={`自動: 取得価格×0.3%+5万 = ${calcScrivener}万円`}/>
-        <ERow label="ローン事務手数料" valKey="loanFee" sub={`自動: 借入額×2.2% = ${calcLoanFee}万円`} highlight/>
-        <ERow label="火災・地震保険（初年度）" valKey="insurance" sub={`自動: 構造別概算 = ${calcInsurance}万円`}/>
-        <ERow label="固定資産税精算金" valKey="propTaxAdj" sub="引渡日以降の日割り精算（実費）"/>
-        <ERow label="その他" valKey="other" sub="引越し・設備・諸雑費等" highlight/>
-        <StatRow label="諸費用 小計" val={totalMisc} bold/>
+
+        {/* 購入費内訳（参照） */}
+        <div style={{background:"#EEF2F7",padding:"5px 10px",borderBottom:`1px solid ${C.border}`,fontSize:10.5,fontWeight:700,color:C.navy,letterSpacing:"0.04em"}}>購入費内訳（参照）</div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${C.border}`,background:"#F8FAFC"}}>
+          <span style={{fontSize:11,color:C.slate}}>土地建物購入費</span>
+          <span style={{fontSize:12,fontWeight:600,color:C.navy}}>{fmt(landBuildYen)} 円</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"6px 10px",borderBottom:`1px solid ${C.border}`,background:"#F8FAFC"}}>
+          <span style={{fontSize:11,color:C.slate}}>消費税</span>
+          <input value={pd.taxNote||""} onChange={e=>updatePD({taxNote:e.target.value})}
+            style={{fontSize:11,color:C.slate,border:"none",background:"transparent",textAlign:"right",width:160}}/>
+        </div>
+        <SubtotalBar amount={landBuildYen}/>
+
+        {/* 諸費用内訳 */}
+        <SectionBar label="諸費用内訳" listKey="miscItems"/>
+        {pd.miscItems.map(item => (
+          <ItemRowEdit key={item.id} listKey="miscItems" item={item}
+            hint={item.id==="broker" ? `仲介手数料自動計算: (物件価格×3%+6万)×1.1 ≈ ${Math.round((landBuildYen/10000*0.03+6)*1.1)}万円` : undefined}/>
+        ))}
+        <SubtotalBar amount={miscNum}/>
+
+        {/* 銀行費用内訳 */}
+        <SectionBar label="銀行費用内訳" listKey="bankItems"/>
+        {pd.bankItems.map(item => (
+          <ItemRowEdit key={item.id} listKey="bankItems" item={item}
+            hint={item.id==="loanFee" ? `借入${sim.loan}万円 × 2.2% ≈ ${loanFeeAuto.toLocaleString()}円` : undefined}/>
+        ))}
+        <SubtotalBar amount={bankNum}/>
+
+        {/* その他 */}
+        <SectionBar label="その他" listKey="otherItems"/>
+        {pd.otherItems.map(item => <ItemRowEdit key={item.id} listKey="otherItems" item={item}/>)}
+
+        {/* 合計 */}
         <div style={{background:C.navy,borderRadius:8,padding:"12px 14px",marginTop:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
             <div>
-              <div style={{fontSize:10,color:"#93C5FD",marginBottom:4}}>取得総額（物件＋諸費用）</div>
-              <div style={{fontSize:22,fontWeight:700,color:"#fff"}}>{grandTotal.toLocaleString()}万円</div>
+              <div style={{fontSize:10,color:"#93C5FD",marginBottom:3}}>合計（概算）</div>
+              <div style={{fontSize:20,fontWeight:700,color:"#fff"}}>{fmt(grandTotal)} 円</div>
             </div>
             <div style={{textAlign:"right"}}>
-              <div style={{fontSize:10,color:"#93C5FD",marginBottom:4}}>諸費用率</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#FDE68A"}}>{propPrice>0?(totalMisc/propPrice*100).toFixed(1):0}%</div>
+              <div style={{fontSize:10,color:"#93C5FD",marginBottom:3}}>諸費用率</div>
+              <div style={{fontSize:17,fontWeight:700,color:"#FDE68A"}}>{landBuildYen>0?((miscNum+bankNum+otherNum)/landBuildYen*100).toFixed(1):0}%</div>
             </div>
           </div>
-          <div style={{marginTop:10,display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <div style={{background:"rgba(255,255,255,0.08)",borderRadius:6,padding:"7px 10px"}}>
-              <div style={{fontSize:9,color:"#93C5FD"}}>自己資金との差</div>
-              <div style={{fontSize:13,fontWeight:600,color:p.equity>=totalMisc?"#86EFAC":"#FCA5A5"}}>
-                {p.equity>=totalMisc?"余裕あり":"不足"} {Math.abs(p.equity-totalMisc).toLocaleString()}万円
-              </div>
+        </div>
+
+        {/* 会社情報 */}
+        <div style={{marginTop:12,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",background:"#F8FAFC"}}>
+          <div style={{fontSize:10,fontWeight:700,color:C.navy,marginBottom:6}}>会社情報（PDF右下に表示）</div>
+          {[["company","会社名"],["address","住所"],["tel","TEL"]].map(([k,label])=>(
+            <div key={k} style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+              <span style={{fontSize:10,color:C.gray,width:36}}>{label}</span>
+              <input value={pd[k]||""} onChange={e=>updatePD({[k]:e.target.value})}
+                style={{flex:1,fontSize:11,padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius:4,color:C.navy}}/>
             </div>
-            <div style={{background:"rgba(255,255,255,0.08)",borderRadius:6,padding:"7px 10px"}}>
-              <div style={{fontSize:9,color:"#93C5FD"}}>入力の「諸費用」との差</div>
-              <div style={{fontSize:13,fontWeight:600,color:Math.abs(p.otherCost-totalMisc)<200?"#86EFAC":"#FCA5A5"}}>
-                {p.otherCost>=totalMisc?"余裕あり":"乖離"} {Math.abs(p.otherCost-totalMisc).toLocaleString()}万円
-              </div>
-            </div>
-          </div>
-          <div style={{marginTop:8,fontSize:9,color:"#64748B",lineHeight:1.6}}>
-            ※ 各費用は概算値です。実際の費用は物件・金融機関・税務状況により異なります。税理士・司法書士へご確認ください。
-          </div>
+          ))}
         </div>
       </div>
     );
