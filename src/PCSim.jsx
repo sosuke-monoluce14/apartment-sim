@@ -10,10 +10,15 @@ import {
 
 // ── constants ──────────────────────────────────────────────────────
 const MADORI = [
+  { key:"1R",   label:"1R",   sqm:18, ref:6.0 },
   { key:"1K",   label:"1K",   sqm:25, ref:7.5 },
+  { key:"1DK",  label:"1DK",  sqm:30, ref:8.5 },
   { key:"1LDK", label:"1LDK", sqm:40, ref:10.2 },
   { key:"2K",   label:"2K",   sqm:35, ref:9.0 },
+  { key:"2DK",  label:"2DK",  sqm:45, ref:11.0 },
   { key:"2LDK", label:"2LDK", sqm:55, ref:13.5 },
+  { key:"3DK",  label:"3DK",  sqm:60, ref:14.0 },
+  { key:"3LDK", label:"3LDK", sqm:70, ref:16.0 },
 ];
 const STRUCTURES = { wood:{label:"木造",life:22}, steel:{label:"軽鉄",life:27}, rc:{label:"RC造",life:47} };
 const TAX_BRACKETS = [
@@ -324,16 +329,26 @@ function runSim(p) {
   const deprAnnual=p.buildCost/life;
   const salaryBase=Math.max(0,p.salary-incDeduct(p.salary*10000)/10000);
   const salaryTaxOnly=calcTax(Math.max(0,salaryBase*10000));
+  const maxYrs=Math.max(p.holdYrs,p.loanYears||0,1);
+  const avgMonthlyRent=blendedRent; // 万円/月
   const rows=[]; let bal=loan,cum=-p.equity;
-  for(let yr=1;yr<=Math.max(p.holdYrs,1);yr++){
+  for(let yr=1;yr<=maxYrs;yr++){
     const effRate=(p.rateChgYr>0&&yr>=p.rateChgYr&&p.rateAfter>0)?p.rateAfter:p.loanRate;
     const curM=effRate/100/12, remMon=Math.max(0,nMon-(yr-1)*12);
     const rd=Math.pow(1-p.rentDecline/100,yr-1), occ=(yr===1?p.occInit:p.occ)/100;
     const rentInc=blendedRent*totalUnits*12*occ*rd, parkInc=p.parkRent*p.parking*12;
-    const totalInc=rentInc+parkInc;
+    // 礼金・更新料（入退去年のみ）
+    const avgTY=Math.max(1,p.avgTenantYears||3);
+    const renewYr=Math.max(1,p.renewalYears||2);
+    const isNewTenant=(yr===1)||((yr-1)%avgTY===0);
+    const isRenewal=!isNewTenant&&((yr-1)%renewYr===0);
+    const keyMoneyInc=isNewTenant?R(totalUnits*(p.keyMoneys||0)*avgMonthlyRent):0;
+    const renewalInc=isRenewal?R(totalUnits*(p.renewalFee||0)*avgMonthlyRent):0;
+    const totalInc=rentInc+parkInc+keyMoneyInc+renewalInc;
     const mgmt=rentInc*p.mgmtRate/100;
     const majorR=p.majorRepairs.reduce((s,r)=>r.yr===yr?s+r.cost:s,0);
-    const totalCost=mgmt+p.repairRes+p.propTax+p.insure+p.util+majorR;
+    const annualRepair=p.annualRepair||0;
+    const totalCost=mgmt+p.repairRes+p.propTax+p.insure+p.util+majorR+annualRepair;
     const noi=totalInc-totalCost;
     let annPay=0,interest=0,principal=0;
     if(yr<=p.loanYears&&bal>0){
@@ -344,19 +359,20 @@ function runSim(p) {
       bal=Math.max(0,bal-principal);
     }
     const cfAD=noi-annPay; cum+=cfAD;
-    const reiEst=totalInc-totalCost-deprAnnual-interest;
+    const deprYr=yr<=life?deprAnnual:0;
+    const reiEst=rentInc+parkInc-totalCost-deprYr-interest;
     const taxableTotal=Math.max(0,(salaryBase+reiEst)*10000);
     const taxSaving=Math.max(0,(salaryTaxOnly-calcTax(taxableTotal))/10000)+Math.max(0,-reiEst*0.1);
     const buildBook=Math.max(0,p.buildCost*(1-yr/life));
     const landVal=(p.hasLand?p.landCost:p.landCost)*Math.pow(1+p.landChg/100,yr);
     const incVal=p.exitYield>0?noi/(p.exitYield/100):0;
-    rows.push({year:yr,rentInc:R(rentInc),parkInc:R(parkInc),totalInc:R(totalInc),
-      mgmt:R(mgmt),repairRes:R(p.repairRes),propTax:R(p.propTax),insure:R(p.insure),
+    rows.push({year:yr,rentInc:R(rentInc),parkInc:R(parkInc),keyMoney:keyMoneyInc,renewal:renewalInc,totalInc:R(totalInc),
+      mgmt:R(mgmt),repairRes:R(p.repairRes),propTax:R(p.propTax),insure:R(p.insure),annualRepair:R(annualRepair),
       adAnnual:0,util:R(p.util),majorR:R(majorR),totalCost:R(totalCost),
       noi:R(noi),interest:R(interest),principal:R(principal),annPay:R(annPay),bal:R(bal),
       cfAD:R(cfAD),cum:R(cum),buildBook:R(buildBook),landVal:R(landVal),
       assetTotal:R(buildBook+landVal),incVal:R(incVal),nw:R(incVal-bal),
-      depr:R(deprAnnual),taxSaving:R(taxSaving),
+      depr:R(deprYr),reiEst:R(reiEst),taxSaving:R(taxSaving),
       remDeprYrs:Math.max(0,life-yr),
       remDeprAmt:Math.max(0,p.buildCost*(life-yr)/life)});
   }
@@ -447,6 +463,9 @@ const INIT={
   mgmtRate:5,repairRes:50,propTax:80,insure:5,util:12,
   majorRepairs:[{yr:15,cost:600}],structure:"wood",landChg:0.5,
   holdYrs:20,exitYield:5.5,exitBrok:3,salary:800,comparables:[],
+  yieldRef:5.0,
+  annualRepair:0,
+  keyMoneys:0.5,renewalFee:1.0,renewalYears:2,avgTenantYears:3,depositMonths:1,
   purchaseDetail:{...DEFAULT_PD},
 };
 
@@ -454,16 +473,32 @@ const INIT={
 const Req = () => <span style={{fontSize:10,fontWeight:600,background:"#FEE2E2",color:"#991B1B",borderRadius:4,padding:"1px 5px",marginLeft:4}}>必須</span>;
 const Opt = () => <span style={{fontSize:10,background:"#F1F5F9",color:C.gray,borderRadius:4,padding:"1px 5px",marginLeft:4}}>任意</span>;
 const FL  = ({children}) => <div style={{fontSize:11,fontWeight:600,color:C.slate,marginBottom:4,display:"flex",alignItems:"center"}}>{children}</div>;
-const Slider = ({min,max,step,value,onChange,display,hint}) => (
-  <div style={{marginBottom:12}}>
-    <div style={{display:"flex",alignItems:"center",gap:6}}>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(+e.target.value)} style={{flex:1,accentColor:C.blue,height:18,cursor:"pointer"}}/>
-      <span style={{fontSize:12,fontWeight:600,color:C.navy,minWidth:58,textAlign:"right",flexShrink:0}}>{display}</span>
+function Slider({min,max,step,value,onChange,display,hint,unit}){
+  const [local,setLocal]=useState(value);
+  useEffect(()=>setLocal(value),[value]);
+  return(
+    <div style={{marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(+e.target.value)} style={{flex:1,accentColor:C.blue,height:18,cursor:"pointer"}}/>
+        <input type="number" min={min} max={max} step={step} value={local}
+          onChange={e=>setLocal(e.target.value)}
+          onBlur={e=>{const v=Math.min(max,Math.max(min,+e.target.value||min));setLocal(v);onChange(v);}}
+          style={{width:62,padding:"3px 5px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:12,fontWeight:600,color:C.navy,textAlign:"right"}}/>
+        {unit&&<span style={{fontSize:11,color:C.gray,flexShrink:0,minWidth:20}}>{unit}</span>}
+        {!unit&&display&&<span style={{fontSize:11,color:C.gray,flexShrink:0,minWidth:20}}/>}
+      </div>
+      {hint&&<div style={{fontSize:10,color:C.gray,marginTop:2,lineHeight:1.4}}>{hint}</div>}
     </div>
-    {hint&&<div style={{fontSize:10,color:C.gray,marginTop:2,lineHeight:1.4}}>{hint}</div>}
-  </div>
-);
-const NIn = ({value,onChange}) => <input type="number" value={value} onChange={e=>onChange(+e.target.value||0)} style={{padding:"5px 7px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,fontWeight:600,color:C.navy,width:"100%",background:"#fff"}}/>;
+  );
+}
+function NIn({value,onChange}){
+  const [local,setLocal]=useState(value);
+  useEffect(()=>setLocal(value),[value]);
+  return <input type="number" value={local}
+    onChange={e=>setLocal(e.target.value)}
+    onBlur={e=>onChange(+e.target.value||0)}
+    style={{padding:"5px 7px",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12,fontWeight:600,color:C.navy,width:"100%",background:"#fff"}}/>;
+};
 const SelBtn = ({active,onClick,children}) => <button onClick={onClick} style={{flex:1,padding:"6px 4px",fontSize:11,fontWeight:600,borderRadius:6,cursor:"pointer",border:"none",background:active?C.navy:C.light,color:active?"#fff":C.gray,lineHeight:1.3}}>{children}</button>;
 const TabBtn = ({active,onClick,children}) => <button onClick={onClick} style={{padding:"7px 13px",fontSize:12,fontWeight:600,border:"none",background:"none",cursor:"pointer",color:active?C.blue:C.gray,borderBottom:active?`2px solid ${C.blue}`:"2px solid transparent",whiteSpace:"nowrap"}}>{children}</button>;
 function KpiCard({label,value,ok,term}) {
@@ -604,10 +639,13 @@ const TABLE_ROWS=[
   {type:"parent",label:"総収入",key:"totalInc",color:"#0C447C"},
   {type:"child",label:"賃料収入",key:"rentInc",color:"#185FA5"},
   {type:"child",label:"駐車場収入",key:"parkInc",color:"#185FA5"},
+  {type:"child",label:"礼金",key:"keyMoney",color:"#185FA5",dashIfZero:true},
+  {type:"child",label:"更新料",key:"renewal",color:"#185FA5",dashIfZero:true},
   {type:"group",label:"費用"},
   {type:"parent",label:"費用計",key:"totalCost",color:"#854F0B"},
   {type:"child",label:"管理委託費",key:"mgmt",color:"#92400E"},
   {type:"child",label:"修繕積立",key:"repairRes",color:"#92400E"},
+  {type:"child",label:"年間修繕費",key:"annualRepair",color:"#92400E",dashIfZero:true},
   {type:"child",label:"固定資産税",key:"propTax",color:"#92400E"},
   {type:"child",label:"火災保険料",key:"insure",color:"#92400E"},
   {type:"child",label:"共用部光熱費",key:"util",color:"#92400E"},
@@ -621,9 +659,9 @@ const TABLE_ROWS=[
   {type:"group",label:"キャッシュフロー"},
   {type:"single",label:"年次CF（返済後）",key:"cfAD",bold:true,signed:true},
   {type:"single",label:"累計CF",key:"cum",bold:true,signed:true},
-  {type:"group",label:"税務"},
+  {type:"group",label:"税務・減価償却"},
+  {type:"single",label:"不動産所得（賃料－経費－償却－利子）",key:"reiEst",signed:true,color:"#7C3AED"},
   {type:"single",label:"節税額（所得税＋住民税）",term:"損益通算",key:"taxSaving",color:C.green},
-  {type:"group",label:"減価償却スケジュール"},
   {type:"single",label:"年間減価償却費",term:"減価償却",key:"depr",color:"#2563EB"},
   {type:"single",label:"残償却金額",key:"remDeprAmt",color:"#7C3AED"},
   {type:"single",label:"残償却期間（年）",key:"remDeprYrs",color:"#6B7280"},
@@ -703,10 +741,10 @@ export default function PCSim({ customer, onSave, onBack }) {
   };
 
   const kpiDefs=[
-    {l:"表面利回り", term:"表面利回り", v:fmtP(sim.grossY),           ok:sim.grossY>=6},
-    {l:"実質利回り", term:"実質利回り", v:fmtP(sim.noiY),             ok:sim.noiY>=4},
+    {l:"表面利回り", term:"表面利回り", v:fmtP(sim.grossY),           ok:sim.grossY>=p.yieldRef},
+    {l:"実質利回り", term:"実質利回り", v:fmtP(sim.noiY),             ok:sim.noiY>=(p.yieldRef-1.5)},
     {l:"IRR",        term:"IRR",        v:fmtP(sim.irr),              ok:sim.irr>=5},
-    {l:"CCR",        term:"CCR",        v:fmtP(sim.ccr),              ok:sim.ccr>=5},
+    {l:"CCR",        term:"CCR",        v:fmtP(sim.ccr),              ok:sim.ccr>=3},
     {l:"DSCR",       term:"DSCR",       v:sim.dscr.toFixed(2),        ok:sim.dscr>=1.2},
     {l:"LTV",        term:"LTV",        v:fmtP(sim.ltv),              ok:sim.ltv<=70},
     {l:"回収期間",   term:"回収期間",   v:sim.pbp?`${sim.pbp}年`:"未回収", ok:sim.pbp&&sim.pbp<=20},
@@ -832,19 +870,60 @@ export default function PCSim({ customer, onSave, onBack }) {
   </div>);
 
   const InputRevenue=()=>(<div>
-    <div style={{marginBottom:10}}><FL>安定期入居率<Req/></FL><Slider min={60} max={100} step={1} value={p.occ} onChange={set("occ")} display={`${p.occ}%`} hint={`${p.city}の平均空室率: ${areaInfo.vacancy}% → 入居率${(100-areaInfo.vacancy).toFixed(1)}%`}/></div>
-    <div style={{marginBottom:10}}><FL>賃料下落率<Req/></FL><Slider min={0} max={3} step={0.1} value={p.rentDecline} onChange={set("rentDecline")} display={`${p.rentDecline.toFixed(1)}%/年`}/></div>
-    <Acc title="詳細設定（任意）">
-      <Slider min={50} max={100} step={1} value={p.occInit} onChange={set("occInit")} display={`${p.occInit}%`}/>
-      <Slider min={0} max={20} step={1} value={p.parking} onChange={set("parking")} display={`${p.parking}台`}/>
-      <Slider min={0} max={5} step={0.5} value={p.parkRent} onChange={set("parkRent")} display={`${p.parkRent.toFixed(1)}万/台`}/>
+    <div style={{marginBottom:10}}><FL>安定期入居率<Req/></FL><Slider min={60} max={100} step={1} value={p.occ} onChange={set("occ")} unit="%" hint={`${p.city}の平均空室率: ${areaInfo.vacancy}% → 入居率${(100-areaInfo.vacancy).toFixed(1)}%`}/></div>
+    <div style={{marginBottom:10}}><FL>賃料下落率<Req/></FL><Slider min={0} max={3} step={0.1} value={p.rentDecline} onChange={set("rentDecline")} unit="%/年"/></div>
+    <Acc title="駐車場・初期入居率">
+      <div style={{fontSize:10,color:C.gray,marginBottom:6}}>初年度入居率</div>
+      <Slider min={50} max={100} step={1} value={p.occInit} onChange={set("occInit")} unit="%"/>
+      <div style={{fontSize:10,color:C.gray,marginBottom:6}}>駐車場台数</div>
+      <Slider min={0} max={20} step={1} value={p.parking} onChange={set("parking")} unit="台"/>
+      <div style={{fontSize:10,color:C.gray,marginBottom:6}}>駐車場賃料</div>
+      <Slider min={0} max={5} step={0.5} value={p.parkRent} onChange={set("parkRent")} unit="万/台"/>
+    </Acc>
+    <Acc title="一時金・入退去設定">
+      <div style={{fontSize:10,color:C.gray,marginBottom:6,lineHeight:1.5}}>
+        礼金・更新料は該当年のCF表に別行で反映されます。
+      </div>
+      <div style={{marginBottom:4}}><FL>礼金</FL><Slider min={0} max={3} step={0.5} value={p.keyMoneys} onChange={set("keyMoneys")} unit="ヶ月"/></div>
+      <div style={{marginBottom:4}}><FL>更新料</FL><Slider min={0} max={3} step={0.5} value={p.renewalFee} onChange={set("renewalFee")} unit="ヶ月"/></div>
+      <div style={{marginBottom:4}}><FL>更新間隔</FL><Slider min={1} max={5} step={1} value={p.renewalYears} onChange={set("renewalYears")} unit="年"/></div>
+      <div style={{marginBottom:4}}><FL>平均入居年数</FL><Slider min={1} max={10} step={1} value={p.avgTenantYears} onChange={set("avgTenantYears")} unit="年"/></div>
+      <div style={{marginBottom:4}}><FL>敷金</FL><Slider min={0} max={3} step={0.5} value={p.depositMonths} onChange={set("depositMonths")} unit="ヶ月"/></div>
+      <div style={{fontSize:10,color:C.gray,background:"#F8FAFC",borderRadius:6,padding:"6px 8px",lineHeight:1.6}}>
+        💡 礼金: {p.keyMoneys}ヶ月 × {sim.totalUnits}戸 × 月額{sim.blendedRent.toFixed(1)}万 ≈ {(p.keyMoneys*sim.totalUnits*sim.blendedRent).toFixed(0)}万/回<br/>
+        更新料: {p.renewalFee}ヶ月 × {sim.totalUnits}戸 × 月額{sim.blendedRent.toFixed(1)}万 ≈ {(p.renewalFee*sim.totalUnits*sim.blendedRent).toFixed(0)}万/{p.renewalYears}年
+      </div>
     </Acc>
   </div>);
 
   const InputCost=()=>(<div>
-    <div style={{marginBottom:10}}><FL>管理委託費率<Req/></FL><Slider min={3} max={10} step={0.5} value={p.mgmtRate} onChange={set("mgmtRate")} display={`${p.mgmtRate.toFixed(1)}%`}/></div>
-    <div style={{marginBottom:10}}><FL><Term>修繕積立</Term>（年間）<Req/></FL><Slider min={10} max={200} step={5} value={p.repairRes} onChange={set("repairRes")} display={`${p.repairRes}万/年`}/></div>
-    <div style={{marginBottom:10}}><FL><Term>固定資産税</Term><Req/></FL><Slider min={20} max={500} step={5} value={p.propTax} onChange={set("propTax")} display={`${p.propTax}万/年`}/></div>
+    <div style={{marginBottom:10}}><FL>管理委託費率<Req/></FL><Slider min={3} max={10} step={0.5} value={p.mgmtRate} onChange={set("mgmtRate")} unit="%"/></div>
+    <div style={{marginBottom:10}}><FL><Term>修繕積立</Term>（年間）<Req/></FL><Slider min={10} max={200} step={5} value={p.repairRes} onChange={set("repairRes")} unit="万/年"/></div>
+    <div style={{marginBottom:10}}><FL>年間修繕費（随時修繕）<Opt/></FL>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <div style={{flex:1}}><NIn value={p.annualRepair} onChange={set("annualRepair")}/></div>
+        <span style={{fontSize:11,color:C.gray,whiteSpace:"nowrap"}}>万/年</span>
+      </div>
+      <div style={{fontSize:10,color:C.gray,marginTop:3}}>入退去時クリーニング・随時修繕費。修繕積立とは別に年単位で計上。</div>
+    </div>
+    <div style={{marginBottom:10}}><FL><Term>固定資産税</Term>・都市計画税<Req/></FL>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <div style={{flex:1}}><NIn value={p.propTax} onChange={set("propTax")}/></div>
+        <span style={{fontSize:11,color:C.gray,whiteSpace:"nowrap"}}>万/年</span>
+      </div>
+    </div>
+    <div style={{marginBottom:10}}><FL>火災保険料<Req/></FL>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <div style={{flex:1}}><NIn value={p.insure} onChange={set("insure")}/></div>
+        <span style={{fontSize:11,color:C.gray,whiteSpace:"nowrap"}}>万/年</span>
+      </div>
+    </div>
+    <div style={{marginBottom:10}}><FL>共用部光熱費<Opt/></FL>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <div style={{flex:1}}><NIn value={p.util} onChange={set("util")}/></div>
+        <span style={{fontSize:11,color:C.gray,whiteSpace:"nowrap"}}>万/年</span>
+      </div>
+    </div>
     <div style={{marginBottom:12}}>
       <FL>大規模修繕計画<Req/></FL>
       {p.majorRepairs.map((r,i)=>(
@@ -856,25 +935,32 @@ export default function PCSim({ customer, onSave, onBack }) {
       ))}
       <button onClick={()=>set("majorRepairs")([...p.majorRepairs,{yr:20,cost:600}])} style={{padding:"5px 12px",background:C.light,color:C.gray,border:`1px dashed ${C.border}`,borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:600}}>＋ 修繕計画を追加</button>
     </div>
-    <Acc title="その他費用（任意）">
-      <Slider min={1} max={30} step={1} value={p.insure} onChange={set("insure")} display={`${p.insure}万/年`}/>
-      <Slider min={0} max={50} step={1} value={p.util} onChange={set("util")} display={`${p.util}万/年`}/>
-    </Acc>
   </div>);
 
-  const InputExit=()=>(<div>
-    <div style={{marginBottom:10}}><FL>保有期間<Req/></FL><Slider min={5} max={50} step={1} value={p.holdYrs} onChange={set("holdYrs")} display={`${p.holdYrs}年`}/></div>
-    <div style={{marginBottom:10}}><FL>売却想定利回り<Req/></FL><Slider min={3} max={15} step={0.5} value={p.exitYield} onChange={set("exitYield")} display={`${p.exitYield.toFixed(1)}%`} hint="低いほど高値売却。築年数・立地・市場環境が影響します。"/></div>
+  const InputExit=()=>{
+    const autoBrok=sim.exitPrice>0?Math.round((sim.exitPrice*0.03+6)*1.1):0;
+    return(<div>
+    <div style={{marginBottom:10}}><FL>保有期間<Req/></FL><Slider min={5} max={50} step={1} value={p.holdYrs} onChange={set("holdYrs")} unit="年" hint={`表は借入${p.loanYears}年分まで表示`}/></div>
+    <div style={{marginBottom:10}}><FL>売却想定利回り<Req/></FL><Slider min={3} max={15} step={0.5} value={p.exitYield} onChange={set("exitYield")} unit="%" hint="低いほど高値売却。築年数・立地・市場環境が影響します。"/></div>
     <div style={{background:"#F5F3FF",border:"1px solid #DDD6FE",borderRadius:10,padding:"12px 14px",marginBottom:12}}>
       <div style={{fontSize:10,color:C.purple,fontWeight:700,marginBottom:4}}>🏷️ {p.holdYrs}年後の売却試算</div>
       <div style={{fontSize:20,fontWeight:700,color:C.purple}}>{fmtOku(sim.exitPrice)}</div>
-      <div style={{fontSize:11,color:C.purple,marginTop:4}}>手取り（税・仲介・残債後）：<strong>{fmtOku(sim.exitNet)}</strong></div>
+      <div style={{fontSize:11,color:C.purple,marginTop:4}}>手取り（譲渡所得税・仲介・残債後）：<strong>{fmtOku(sim.exitNet)}</strong></div>
     </div>
-    <Acc title="税・仲介（任意）">
-      <Slider min={0} max={5} step={0.5} value={p.exitBrok} onChange={set("exitBrok")} display={`${p.exitBrok.toFixed(1)}%`}/>
+    <div style={{marginBottom:10}}>
+      <FL>利回り判断目標ライン<Req/></FL>
+      <Slider min={1} max={15} step={0.5} value={p.yieldRef} onChange={set("yieldRef")} unit="%"/>
+      <div style={{fontSize:10,color:C.gray,marginTop:2}}>KPI（表面利回り）のOK/NG判定に使用</div>
+    </div>
+    <Acc title="売却時 譲渡所得税・仲介手数料（任意）">
+      <div style={{fontSize:10,color:C.gray,marginBottom:6}}>仲介手数料率（%）— 実際の手数料: (売却額×3%+6万)×消費税</div>
+      <Slider min={0} max={5} step={0.5} value={p.exitBrok} onChange={set("exitBrok")} unit="%"/>
+      <div style={{fontSize:10,color:C.blue,background:"#EFF6FF",borderRadius:6,padding:"5px 8px",marginTop:4}}>
+        💡 自動計算: (売却{fmtOku(sim.exitPrice)}×3%+6万)×1.1 ≈ <strong>{fmtM(autoBrok)}</strong>
+      </div>
     </Acc>
     <div style={{marginTop:12}}><FL>給与年収（節税計算用）<Req/></FL>
-      <Slider min={300} max={5000} step={50} value={p.salary} onChange={set("salary")} display={`${p.salary}万円`} hint="減価償却費との損益通算による節税額の算出に使用します。"/>
+      <Slider min={300} max={5000} step={50} value={p.salary} onChange={set("salary")} unit="万円" hint="減価償却費との損益通算による節税額の算出に使用します。"/>
     </div>
     <Acc title="取引事例（不動産鑑定用・任意）">
       <div style={{fontSize:10,color:C.gray,marginBottom:8}}>成約事例がある場合のみ入力。取引事例比較法の算出に使用します。</div>
@@ -887,7 +973,7 @@ export default function PCSim({ customer, onSave, onBack }) {
       ))}
       <button onClick={()=>set("comparables")([...p.comparables,{label:`事例${p.comparables.length+1}`,price:8000}])} style={{width:"100%",padding:"7px",background:"#EFF6FF",border:`1.5px dashed ${C.blue}`,borderRadius:7,color:C.blue,fontSize:11,fontWeight:600,cursor:"pointer"}}>＋ 取引事例を追加</button>
     </Acc>
-  </div>);
+  </div>);};
 
   const InputLoanSim = () => {
     const [bankId, setBankId] = useState('mufg');
@@ -1262,7 +1348,21 @@ export default function PCSim({ customer, onSave, onBack }) {
     );
   };
 
-  const INPUT_PANEL={main:<InputMain/>,rooms:<InputRooms/>,finance:<InputFinance/>,revenue:<InputRevenue/>,cost:<InputCost/>,exit:<InputExit/>,loan:<InputLoanSim/>,purchase:<InputPurchaseDetail/>,asset:<InputAssetConfig/>};
+  // アコーディオン状態保持のため関数直接呼び出し（hook使用コンポーネントはJSX）
+  const renderPanel=()=>{
+    switch(inputTab){
+      case"main":     return InputMain();
+      case"rooms":    return InputRooms();
+      case"finance":  return InputFinance();
+      case"revenue":  return InputRevenue();
+      case"cost":     return InputCost();
+      case"exit":     return InputExit();
+      case"loan":     return <InputLoanSim/>;
+      case"purchase": return <InputPurchaseDetail/>;
+      case"asset":    return <InputAssetConfig/>;
+      default:        return null;
+    }
+  };
 
   // ── CHART VIEW ─────────────────────────────────────────────────
   const ChartView=()=>(
@@ -1417,7 +1517,7 @@ export default function PCSim({ customer, onSave, onBack }) {
   const TableView=()=>(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       <div style={{padding:"8px 14px",background:"#F8FAFC",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",flexShrink:0}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.navy}}>年次収支表（{p.holdYrs}年分）　単位：万円</div>
+        <div style={{fontSize:11,fontWeight:700,color:C.navy}}>年次収支表（{rows.length}年分 / 保有{p.holdYrs}年）　単位：万円</div>
         <div style={{fontSize:10,color:C.gray}}>🔧 大規模修繕年　💚 回収完了年</div>
       </div>
       <div style={{flex:1,overflow:"auto"}}>
@@ -1453,7 +1553,7 @@ export default function PCSim({ customer, onSave, onBack }) {
                   if(rowDef.signed)color=val>=0?C.green:C.red;
                   if(rowDef.key==="majorR"&&val===0)color="#CBD5E1";
                   return(<td key={ci} style={{padding:"6px 8px",textAlign:"right",color,fontWeight:(isParent||rowDef.bold)?600:400,fontSize:isChild?10:11,borderRight:`0.5px solid ${C.border}`,borderBottom:`0.5px solid ${C.border}`,background:row.majorR>0&&rowDef.key==="majorR"?"#FFFBEB":"transparent"}}>
-                    {val===0&&!rowDef.signed?<span style={{color:"#E2E8F0"}}>—</span>:R(val).toLocaleString()}
+                    {val===0&&rowDef.dashIfZero?<span style={{color:"#CBD5E1"}}>—</span>:R(val).toLocaleString()}
                   </td>);
                 })}
               </tr>);
@@ -1526,7 +1626,7 @@ export default function PCSim({ customer, onSave, onBack }) {
               }}>{t.l}</button>
             ))}
           </div>
-          <div style={{flex:1,overflowY:"auto",padding:"14px 14px 20px"}}>{INPUT_PANEL[inputTab]}</div>
+          <div key={inputTab} style={{flex:1,overflowY:"auto",padding:"14px 14px 20px"}}>{renderPanel()}</div>
         </div>
         {/* RIGHT */}
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
