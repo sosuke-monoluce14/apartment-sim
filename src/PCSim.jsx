@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import ReactDOM from "react-dom/client";
 import { Page1, Page2, Page3, Page4, PurchasePDFPage } from "./PDFTemplate.jsx";
 import { exportToPDF } from "./generatePDF.js";
@@ -677,7 +677,7 @@ const TABLE_ROWS=[
 export default function PCSim({ customer, onSave, onBack }) {
   const[inputTab,setInputTab]=useState("main");
   const[viewMode,setViewMode]=useState("chart");
-  const[p,setP]=useState(()=>customer?.params||INIT);
+  const[p,setP]=useState(()=>({...INIT,...(customer?.params||{})}));
   const[saved,setSaved]=useState(false);
   const[pdfLoading,setPdfLoading]=useState(false);
   const set=k=>v=>setP(prev=>({...prev,[k]:v}));
