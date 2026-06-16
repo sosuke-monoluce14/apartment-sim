@@ -1291,57 +1291,62 @@ export default function PCSim({ customer, onSave, onBack }) {
 
   const InputAssetConfig = () => {
     const life = STRUCTURES[p.structure]?.life || 22;
-    const deprAnnual = p.buildCost / life;
+    const deprAnnual = R(p.buildCost / life);
     const yr1 = sim.yr1 || {};
-    const FCard = ({title, formula, vars, result, color}) => (
-      <div style={{border:`1px solid ${C.border}`,borderLeft:`4px solid ${color||C.blue}`,borderRadius:6,padding:"10px 12px",marginBottom:12}}>
-        <div style={{fontSize:11,fontWeight:700,color:C.navy,marginBottom:6}}>{title}</div>
-        <div style={{background:"#F8FAFC",borderRadius:4,padding:"6px 8px",fontSize:10,fontFamily:"monospace",color:C.slate,marginBottom:8,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{formula}</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:6}}>
-          {vars.map(v=>(
-            <div key={v.k} style={{background:"#F1F5F9",borderRadius:4,padding:"2px 7px",fontSize:9}}>
-              <span style={{color:C.gray}}>{v.k} = </span><span style={{fontWeight:600,color:C.navy}}>{v.v}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontSize:10,color:C.gray}}>初年度の計算値</span>
-          <span style={{fontSize:13,fontWeight:700,color:color||C.navy}}>{result}</span>
-        </div>
+    const Section = ({color, title, children}) => (
+      <div style={{border:`1px solid ${C.border}`,borderLeft:`4px solid ${color}`,borderRadius:6,padding:"10px 12px",marginBottom:12}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.navy,marginBottom:8}}>{title}</div>
+        <div style={{fontSize:11,color:C.slate,lineHeight:1.9}}>{children}</div>
+      </div>
+    );
+    const Val = ({label, value, unit=""}) => (
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 8px",background:"#F8FAFC",borderRadius:4,marginTop:4}}>
+        <span style={{fontSize:10,color:C.gray}}>{label}</span>
+        <span style={{fontSize:12,fontWeight:700,color:C.navy}}>{value}{unit}</span>
       </div>
     );
     return (
       <div>
         <div style={{fontSize:11,color:C.gray,background:"#FFF7ED",borderRadius:8,padding:"8px 10px",marginBottom:12,lineHeight:1.6,border:`1px solid #FED7AA`}}>
-          📐 残資産シミュレーションで使われている計算式と参照変数です。<br/>変数は各タブで変更できます。
+          📐 このシミュレーションで使っている減価償却・資産評価の考え方を説明します。
         </div>
-        <FCard title="年間減価償却費"
-          formula={`deprAnnual = buildCost ÷ life\n= ${p.buildCost} ÷ ${life} = ${deprAnnual.toFixed(1)} 万円/年`}
-          vars={[{k:"buildCost（建築費）",v:`${p.buildCost}万円`},{k:"life（耐用年数）",v:`${life}年・${STRUCTURES[p.structure]?.label}`}]}
-          result={`${deprAnnual.toFixed(1)}万円/年`} color="#2563EB"/>
-        <FCard title="建物帳簿価値（yr年目）"
-          formula={`buildBook = max(0, buildCost × (1 − yr ÷ life))\n1年目 = max(0, ${p.buildCost} × (1 − 1÷${life})) = ${Math.max(0,p.buildCost*(1-1/life)).toFixed(0)}万円`}
-          vars={[{k:"buildCost",v:`${p.buildCost}万円`},{k:"life",v:`${life}年`},{k:"yr",v:"1, 2, 3 ..."}]}
-          result={`1年目 ${Math.max(0,p.buildCost*(1-1/life)).toFixed(0)}万円`} color="#7C3AED"/>
-        <FCard title="残償却金額（yr年目）"
-          formula={`remDeprAmt = max(0, buildCost × (life − yr) ÷ life)\n1年目 = ${p.buildCost} × (${life}−1)÷${life} = ${Math.max(0,p.buildCost*(life-1)/life).toFixed(0)}万円`}
-          vars={[{k:"buildCost",v:`${p.buildCost}万円`},{k:"life",v:`${life}年`}]}
-          result={`1年目 ${Math.max(0,p.buildCost*(life-1)/life).toFixed(0)}万円`} color="#7C3AED"/>
-        <FCard title="収益還元価値（yr年目）"
-          formula={`incVal = NOI_yr ÷ (exitYield ÷ 100)\n1年目 = ${yr1.noi||0} ÷ ${(p.exitYield/100).toFixed(3)} = ${yr1.incVal||0}万円`}
-          vars={[{k:"NOI（初年度）",v:`${yr1.noi||0}万円`},{k:"exitYield（売却想定利回）",v:`${p.exitYield}%`}]}
-          result={`初年度 ${yr1.incVal||0}万円`} color="#059669"/>
-        <FCard title="ネットワース（yr年目）"
-          formula={`nw = incVal − bal（残債残高）\n1年目 = ${yr1.incVal||0} − ${yr1.bal||0} = ${(yr1.nw||0)}万円`}
-          vars={[{k:"incVal（初年度）",v:`${yr1.incVal||0}万円`},{k:"bal（初年度残債）",v:`${yr1.bal||0}万円`}]}
-          result={`初年度 ${(yr1.nw||0)>=0?"+":""}${yr1.nw||0}万円`} color="#DC2626"/>
+
+        <Section color="#2563EB" title="① 年間の減価償却費">
+          <div>建物は税務上、毎年一定額ずつ価値が目減りしていくと見なします。</div>
+          <div style={{marginTop:4}}>この目減り額を「減価償却費」と呼び、<strong>建築費を法定耐用年数で均等に割った金額</strong>がそのまま毎年の経費として計上されます。</div>
+          <div style={{marginTop:6,fontSize:10,color:C.gray}}>例：建築費{p.buildCost.toLocaleString()}万円 ÷ {STRUCTURES[p.structure]?.label}{life}年 ＝ 毎年 約{deprAnnual.toLocaleString()}万円を経費計上</div>
+          <Val label="現在の設定での年間償却費" value={deprAnnual.toLocaleString()} unit="万円/年"/>
+          <div style={{marginTop:8,fontSize:10,color:C.gray}}>※ {life}年を超えると減価償却は終了し、それ以降は経費として計上できなくなります。</div>
+        </Section>
+
+        <Section color="#7C3AED" title="② 建物の帳簿上の残存価値">
+          <div>毎年償却が進むにつれて、帳簿上の建物価値は少しずつ下がります。</div>
+          <div style={{marginTop:4}}>{life}年かけてちょうど0円になるイメージです。CF表の「残償却金額」欄に各年の値が表示されます。</div>
+          <Val label="1年目の建物帳簿価値" value={Math.max(0,R(p.buildCost*(1-1/life))).toLocaleString()} unit="万円"/>
+          <Val label={`${life}年目（耐用年数終了）`} value="0" unit="万円"/>
+        </Section>
+
+        <Section color="#059669" title="③ 売却価格の推計（収益還元法）">
+          <div>「この物件を売るといくらになるか」を、<strong>その時点の年間収益（NOI）から逆算</strong>して推計します。</div>
+          <div style={{marginTop:4}}>買い手が「この利回りなら買う」と考える水準で割り戻した価格です。利回り設定が低いほど高値売却を意味します。</div>
+          <div style={{marginTop:6,fontSize:10,color:C.gray}}>例：初年度のNOI {(yr1.noi||0).toLocaleString()}万円 ÷ 売却想定利回 {p.exitYield}% ＝ 推計売却額 {(yr1.incVal||0).toLocaleString()}万円</div>
+          <Val label="初年度の推計売却額" value={(yr1.incVal||0).toLocaleString()} unit="万円"/>
+          <div style={{marginTop:8,fontSize:10,color:C.gray}}>※ 売却想定利回は「出口・税務」タブで変更できます。</div>
+        </Section>
+
+        <Section color="#DC2626" title="④ ネットワース（実質的な資産価値）">
+          <div>推計売却額からローンの残債を差し引いた額が、<strong>その時点で売却した場合に手元に残るお金</strong>です。</div>
+          <div style={{marginTop:4}}>プラスであれば売却益が出る状態、マイナスであれば残債の方が多い状態（いわゆる「オーバーローン」）を意味します。</div>
+          <Val label="初年度のネットワース" value={`${(yr1.nw||0)>=0?"+":""}${(yr1.nw||0).toLocaleString()}`} unit="万円"/>
+        </Section>
+
         <div style={{background:"#F1F5F9",borderRadius:8,padding:"10px 12px",marginTop:4}}>
-          <div style={{fontSize:11,fontWeight:700,color:C.navy,marginBottom:6}}>🔧 変数の変更方法</div>
+          <div style={{fontSize:11,fontWeight:700,color:C.navy,marginBottom:6}}>🔧 各数値の変更方法</div>
           <div style={{fontSize:10,color:C.slate,lineHeight:1.9}}>
-            <div>• <strong>建築費（buildCost）</strong> → 「土地・建物」タブ</div>
-            <div>• <strong>耐用年数（life）</strong> → 右上の建物種別スイッチャー（木造22/軽鉄27/RC47年）</div>
-            <div>• <strong>売却想定利回（exitYield）</strong> → 「出口・税務」タブ</div>
-            <div>• <strong>NOI → 賃料・入居率・コスト</strong> → 「間取り」「収益」「コスト」タブ</div>
+            <div>• 建築費 → 「土地・建物」タブ</div>
+            <div>• 建物構造・耐用年数 → 「土地・建物」タブの構造選択（木造22年 / 軽鉄27年 / RC造47年）</div>
+            <div>• 売却想定利回 → 「出口・税務」タブ</div>
+            <div>• 賃料・入居率・コスト → 「間取り」「収益」「コスト」タブ</div>
           </div>
         </div>
       </div>
