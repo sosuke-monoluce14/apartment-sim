@@ -29,7 +29,7 @@ function NewModal({ onClose, onCreate }) {
             autoFocus
             value={name}
             onChange={e=>setName(e.target.value)}
-            onKeyDown={e=>e.key==='Enter'&&name.trim()&&onCreate(name.trim(),memo)}
+            onKeyDown={e=>e.key==='Enter'&&!e.nativeEvent.isComposing&&name.trim()&&onCreate(name.trim(),memo)}
             placeholder="例：山田 太郎 様"
             style={{width:'100%',padding:'10px 12px',border:`1.5px solid ${name?C.blue:C.border}`,borderRadius:8,fontSize:14,color:C.navy,outline:'none',boxSizing:'border-box',transition:'border-color 0.15s'}}
           />

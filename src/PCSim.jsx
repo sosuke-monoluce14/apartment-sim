@@ -479,17 +479,24 @@ function Slider({min,max,step,value,onChange,display,hint,unit}){
   return(
     <div style={{marginBottom:12}}>
       <div style={{display:"flex",alignItems:"center",gap:6}}>
-        <input type="range" min={min} max={max} step={step} value={value} onChange={e=>onChange(+e.target.value)} style={{flex:1,accentColor:C.blue,height:18,cursor:"pointer"}}/>
         <input type="number" min={min} max={max} step={step} value={local}
           onChange={e=>setLocal(e.target.value)}
           onBlur={e=>{const v=Math.min(max,Math.max(min,+e.target.value||min));setLocal(v);onChange(v);}}
-          style={{width:62,padding:"3px 5px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:12,fontWeight:600,color:C.navy,textAlign:"right"}}/>
+          style={{flex:1,padding:"5px 8px",border:`1.5px solid ${C.border}`,borderRadius:6,fontSize:13,fontWeight:600,color:C.navy,textAlign:"right"}}/>
         {unit&&<span style={{fontSize:11,color:C.gray,flexShrink:0,minWidth:20}}>{unit}</span>}
-        {!unit&&display&&<span style={{fontSize:11,color:C.gray,flexShrink:0,minWidth:20}}/>}
       </div>
       {hint&&<div style={{fontSize:10,color:C.gray,marginTop:2,lineHeight:1.4}}>{hint}</div>}
     </div>
   );
+}
+function TextIn({value,onChange,placeholder,style}){
+  const [local,setLocal]=useState(value);
+  useEffect(()=>setLocal(value),[value]);
+  return <input value={local}
+    onChange={e=>setLocal(e.target.value)}
+    onBlur={e=>onChange(e.target.value)}
+    placeholder={placeholder}
+    style={style}/>;
 }
 function NIn({value,onChange}){
   const [local,setLocal]=useState(value);
@@ -1181,7 +1188,7 @@ export default function PCSim({ customer, onSave, onBack }) {
           {/* ラベル行 */}
           <div style={{display:"flex",gap:4,alignItems:"center",marginBottom:4}}>
             {isCustom
-              ? <input value={item.label} onChange={e=>updateItem(listKey,item.id,{label:e.target.value})}
+              ? <TextIn value={item.label} onChange={v=>updateItem(listKey,item.id,{label:v})}
                   placeholder="項目名を入力" style={{flex:1,fontSize:11,padding:"2px 6px",border:`1px solid ${C.border}`,borderRadius:4,color:C.navy}}/>
               : <span style={{flex:1,fontSize:11,fontWeight:600,color:C.slate}}>{item.label}</span>
             }
@@ -1200,7 +1207,7 @@ export default function PCSim({ customer, onSave, onBack }) {
                   style={{flex:"0 0 130px",fontSize:12,fontWeight:600,color:C.navy,padding:"3px 6px",border:`1.5px solid ${C.border}`,borderRadius:4,textAlign:"right"}}/>
             }
             <span style={{fontSize:10,color:C.gray,whiteSpace:"nowrap"}}>円</span>
-            <input value={item.note||""} onChange={e=>updateItem(listKey,item.id,{note:e.target.value})}
+            <TextIn value={item.note||""} onChange={v=>updateItem(listKey,item.id,{note:v})}
               placeholder="備考" style={{flex:1,fontSize:10,padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius:4,color:C.slate}}/>
           </div>
           {hint&&<div style={{fontSize:9,color:C.blue,marginTop:3}}>💡 {hint}</div>}
