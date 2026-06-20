@@ -774,10 +774,10 @@ export default function PCSim({ customer, onSave, onBack }) {
     <div style={{background:"#EFF6FF",border:`1px solid #BAE6FD`,borderRadius:8,padding:"8px 10px",marginBottom:12,fontSize:11}}>
       <div style={{fontWeight:700,color:C.blue,marginBottom:4}}>📡 {p.city} エリアデータ（速報）</div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:11}}>
-        <div><span style={{color:C.gray}}>1K平均賃料</span><br/><strong>{areaInfo.rent1K}万円</strong></div>
+        <div><span style={{color:C.gray}}>1K平均賃料</span><br/><strong>{(areaInfo.rent1K*10000).toLocaleString()}円</strong></div>
         <div><span style={{color:C.gray}}>空室率</span><br/><strong>{areaInfo.vacancy}%</strong></div>
         <div><span style={{color:C.gray}}>地価前年比</span><br/><strong style={{color:C.green}}>+{areaInfo.landChgYoy}%</strong></div>
-        <div><span style={{color:C.gray}}>1LDK平均</span><br/><strong>{areaInfo.rent1LDK}万円</strong></div>
+        <div><span style={{color:C.gray}}>1LDK平均</span><br/><strong>{(areaInfo.rent1LDK*10000).toLocaleString()}円</strong></div>
       </div>
     </div>
     <div style={{marginBottom:10}}>
@@ -787,9 +787,9 @@ export default function PCSim({ customer, onSave, onBack }) {
         <SelBtn active={!p.hasLand} onClick={()=>set("hasLand")(false)}>土地なし（取得要）</SelBtn>
       </div>
     </div>
-    {!p.hasLand&&<div style={{marginBottom:10}}><FL>土地取得費<Req/></FL><Slider min={500} max={30000} step={100} value={p.landCost} onChange={set("landCost")} display={fmtOku(p.landCost)}/></div>}
+    {!p.hasLand&&<div style={{marginBottom:10}}><FL>土地取得費<Req/></FL><Slider min={500} max={30000} step={100} value={p.landCost} onChange={set("landCost")} unit="万円"/></div>}
     <Acc title="地価変動率（任意）">
-      <Slider min={-2} max={5} step={0.1} value={p.landChg} onChange={set("landChg")} display={`${p.landChg.toFixed(1)}%/年`} hint={`${p.city}の過去実績: +${areaInfo.landChgYoy}%/年`}/>
+      <Slider min={-2} max={5} step={0.1} value={p.landChg} onChange={set("landChg")} unit="%/年" hint={`${p.city}の過去実績: +${areaInfo.landChgYoy}%/年`}/>
     </Acc>
     <div style={{height:1,background:C.border,margin:"12px 0"}}/>
     <div style={{fontSize:11,fontWeight:700,color:C.blue,marginBottom:10}}>🏗 建物計画</div>
@@ -802,10 +802,10 @@ export default function PCSim({ customer, onSave, onBack }) {
       </div>
       <div style={{fontSize:10,color:C.blue,background:"#EFF6FF",borderRadius:6,padding:"4px 8px",marginTop:4}}>耐用年数（減価償却・資産価値計算）にのみ影響します。</div>
     </div>
-    <div style={{marginBottom:10}}><FL>建築費（総額）<Req/></FL><Slider min={1000} max={30000} step={100} value={p.buildCost} onChange={set("buildCost")} display={fmtOku(p.buildCost)}/></div>
+    <div style={{marginBottom:10}}><FL>建築費（総額）<Req/></FL><Slider min={1000} max={30000} step={100} value={p.buildCost} onChange={set("buildCost")} unit="万円"/></div>
     <div style={{marginBottom:8}}>
       <FL>諸費用<Req/></FL>
-      <Slider min={0} max={3000} step={50} value={p.otherCost} onChange={set("otherCost")} display={fmtM(p.otherCost)} hint="登記・不動産取得税・司法書士・印紙税・仲介手数料など。建築費の3〜5%が目安。"/>
+      <Slider min={0} max={3000} step={50} value={p.otherCost} onChange={set("otherCost")} unit="万円" hint="登記・不動産取得税・司法書士・印紙税・仲介手数料など。建築費の3〜5%が目安。"/>
     </div>
     <div style={{background:C.navy,borderRadius:10,padding:"12px 14px",marginTop:10,color:"#fff"}}>
       <div style={{fontSize:10,color:"#93C5FD",marginBottom:3}}>総投資額</div>
@@ -841,8 +841,8 @@ export default function PCSim({ customer, onSave, onBack }) {
           </div>
         </div>
         <FL>月額賃料（1戸）<Req/></FL>
-        <Slider min={3} max={30} step={0.5} value={r.rent} onChange={v=>updRoom(i,"rent",v)} display={`${r.rent.toFixed(1)}万`}/>
-        <div style={{background:C.greenBg,borderRadius:6,padding:"4px 8px",fontSize:11,color:C.green}}>月収 <strong>{fmtM(r.rent*r.count)}</strong>（{r.count}戸×{r.rent}万）</div>
+        <Slider min={30000} max={300000} step={500} value={Math.round(r.rent*10000)} onChange={v=>updRoom(i,"rent",v/10000)} unit="円"/>
+        <div style={{background:C.greenBg,borderRadius:6,padding:"4px 8px",fontSize:11,color:C.green}}>月収 <strong>{fmtM(r.rent*r.count)}</strong>（{r.count}戸×{(r.rent*10000).toLocaleString()}円）</div>
       </div>
     ))}
     <button onClick={addRoom} style={{width:"100%",padding:"8px",background:"#EFF6FF",border:`1.5px dashed ${C.blue}`,borderRadius:8,color:C.blue,fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:6}}>＋ 間取りを追加</button>
@@ -853,7 +853,7 @@ export default function PCSim({ customer, onSave, onBack }) {
   </div>);
 
   const InputFinance=()=>(<div>
-    <div style={{marginBottom:10}}><FL>自己資金<Req/></FL><Slider min={500} max={15000} step={100} value={p.equity} onChange={set("equity")} display={fmtOku(p.equity)}/></div>
+    <div style={{marginBottom:10}}><FL>自己資金<Req/></FL><Slider min={500} max={15000} step={100} value={p.equity} onChange={set("equity")} unit="万円"/></div>
     <div style={{background:"#F8FAFC",borderRadius:8,padding:"10px 12px",marginBottom:12,fontSize:12}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
         {[["借入金額",fmtOku(sim.loan)],["月次返済額",`${sim.monthPay.toFixed(1)}万/月`],["LTV",fmtP(sim.ltv)],["DSCR",sim.dscr.toFixed(2)]].map(([l,v])=>(
@@ -861,8 +861,8 @@ export default function PCSim({ customer, onSave, onBack }) {
         ))}
       </div>
     </div>
-    <div style={{marginBottom:10}}><FL>借入金利<Req/></FL><Slider min={0.5} max={5} step={0.1} value={p.loanRate} onChange={set("loanRate")} display={`${p.loanRate.toFixed(1)}%`}/></div>
-    <div style={{marginBottom:10}}><FL>返済期間<Req/></FL><Slider min={10} max={35} step={1} value={p.loanYears} onChange={set("loanYears")} display={`${p.loanYears}年`}/></div>
+    <div style={{marginBottom:10}}><FL>借入金利<Req/></FL><Slider min={0.5} max={5} step={0.1} value={p.loanRate} onChange={set("loanRate")} unit="%"/></div>
+    <div style={{marginBottom:10}}><FL>返済期間<Req/></FL><Slider min={10} max={35} step={1} value={p.loanYears} onChange={set("loanYears")} unit="年"/></div>
     <div style={{marginBottom:10}}>
       <FL>返済方式（<Term>元利均等</Term>・<Term>元金均等</Term>）<Req/></FL>
       <div style={{display:"flex",gap:6}}>
@@ -871,8 +871,8 @@ export default function PCSim({ customer, onSave, onBack }) {
       </div>
     </div>
     <Acc title="金利変動シナリオ（任意）">
-      <Slider min={0} max={25} step={1} value={p.rateChgYr} onChange={set("rateChgYr")} display={p.rateChgYr>0?`${p.rateChgYr}年目`:"なし"}/>
-      {p.rateChgYr>0&&<Slider min={0.5} max={5} step={0.1} value={p.rateAfter} onChange={set("rateAfter")} display={`${p.rateAfter.toFixed(1)}%`}/>}
+      <Slider min={0} max={25} step={1} value={p.rateChgYr} onChange={set("rateChgYr")} unit="年目" hint="0 = 変動なし"/>
+      {p.rateChgYr>0&&<Slider min={0.5} max={5} step={0.1} value={p.rateAfter} onChange={set("rateAfter")} unit="%"/>}
     </Acc>
   </div>);
 
@@ -897,8 +897,8 @@ export default function PCSim({ customer, onSave, onBack }) {
       <div style={{marginBottom:4}}><FL>平均入居年数</FL><Slider min={1} max={10} step={1} value={p.avgTenantYears} onChange={set("avgTenantYears")} unit="年"/></div>
       <div style={{marginBottom:4}}><FL>敷金</FL><Slider min={0} max={3} step={0.5} value={p.depositMonths} onChange={set("depositMonths")} unit="ヶ月"/></div>
       <div style={{fontSize:10,color:C.gray,background:"#F8FAFC",borderRadius:6,padding:"6px 8px",lineHeight:1.6}}>
-        💡 礼金: {p.keyMoneys}ヶ月 × {sim.totalUnits}戸 × 月額{sim.blendedRent.toFixed(1)}万 ≈ {(p.keyMoneys*sim.totalUnits*sim.blendedRent).toFixed(0)}万/回<br/>
-        更新料: {p.renewalFee}ヶ月 × {sim.totalUnits}戸 × 月額{sim.blendedRent.toFixed(1)}万 ≈ {(p.renewalFee*sim.totalUnits*sim.blendedRent).toFixed(0)}万/{p.renewalYears}年
+        💡 礼金: {p.keyMoneys}ヶ月 × {sim.totalUnits}戸 × 月額{(sim.blendedRent*10000).toLocaleString()}円 ≈ {(p.keyMoneys*sim.totalUnits*sim.blendedRent).toFixed(0)}万/回<br/>
+        更新料: {p.renewalFee}ヶ月 × {sim.totalUnits}戸 × 月額{(sim.blendedRent*10000).toLocaleString()}円 ≈ {(p.renewalFee*sim.totalUnits*sim.blendedRent).toFixed(0)}万/{p.renewalYears}年
       </div>
     </Acc>
   </div>);
